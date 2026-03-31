@@ -30,8 +30,24 @@ Then edit `data/config.json` for your team (see [Configuration](#configuration) 
 ## Requirements
 
 - Node.js 18+
-- A GitHub token with `repo`, `read:org`, and `project` scopes
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
+- A GitHub token with the right scopes (see below)
+
+### GitHub authentication
+
+The recommended approach is to use the [GitHub CLI](https://cli.github.com/) (`gh`). The setup script will automatically pick up your token from it.
+
+```bash
+# Install gh if needed: https://cli.github.com/
+gh auth login
+
+# Add the project scope (needed for board integration)
+gh auth refresh -s project
+```
+
+This gives you a token with `repo`, `read:org`, and `project` scopes — everything the tool needs.
+
+Alternatively, you can create a [personal access token](https://github.com/settings/tokens) manually with those scopes and paste it during setup.
 
 ## Configuration
 
