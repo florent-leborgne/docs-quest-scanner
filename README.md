@@ -15,7 +15,7 @@ Built for use with [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
 
 ```bash
 git clone https://github.com/florent-leborgne/docs-quest-scanner.git
-cd pr-docs-triage
+cd docs-quest-scanner
 ./scripts/setup.sh
 ```
 
@@ -25,7 +25,7 @@ The setup script will:
 - Create a local `data/config.json` from defaults
 - Install the Claude Code skill
 
-Then edit `data/config.json` for your team (see [Configuration](#configuration) below), and run `/pr-docs-triage` in Claude Code.
+Then edit `data/config.json` for your team (see [Configuration](#configuration) below), and run `/docs-quest-scanner` in Claude Code.
 
 ## Requirements
 
@@ -106,7 +106,7 @@ gh auth refresh -s project
 In Claude Code, run:
 
 ```
-/pr-docs-triage
+/docs-quest-scanner
 ```
 
 The skill will:
