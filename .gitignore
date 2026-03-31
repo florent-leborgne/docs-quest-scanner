@@ -1,0 +1,9 @@
+node_modules/
+dist/
+data/config.json
+data/queue.json
+data/history.json
+data/last_run.json
+data/enrichments.json
+.env
+*.tgz

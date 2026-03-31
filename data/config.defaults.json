@@ -1,0 +1,61 @@
+{
+  "title": "Docs Quest Scanner — Kibana Platform and Analyst UX",
+  "sourceRepo": { "owner": "elastic", "repo": "kibana" },
+  "targetRepo": { "owner": "elastic", "repo": "docs-content" },
+  "categories": [
+    {
+      "name": "Dashboards and Visualizations",
+      "labels": ["Team:Presentation", "Team:Visualizations"]
+    },
+    {
+      "name": "Discover",
+      "labels": ["Team:dataDiscovery"]
+    },
+    {
+      "name": "ES|QL in Kibana",
+      "labels": ["Team:esql"],
+      "metaIssueHeading": "ES|QL editor in Kibana"
+    },
+    {
+      "name": "Kibana navigation and UI",
+      "labels": ["Team:sharedUX"]
+    },
+    {
+      "name": "Kibana security",
+      "labels": ["Team:Security"],
+      "metaIssueHeading": "Kibana admin"
+    },
+    {
+      "name": "Kibana management",
+      "labels": ["Team:Kibana Management"],
+      "metaIssueHeading": "Kibana platform"
+    }
+  ],
+  "versionLabelPattern": "^v\\d+\\.\\d+\\.\\d+$",
+  "releaseNoteLabels": [
+    "release_note:breaking",
+    "release_note:deprecation",
+    "release_note:feature",
+    "release_note:enhancement"
+  ],
+  "issueLabels": ["Team:Experience"],
+  "project": {
+    "org": "elastic",
+    "number": 1034,
+    "defaultArea": "Kibana core",
+    "defaultPriority": "P2 (Important)",
+    "sizeMap": {
+      "quick-fix": "XS",
+      "update": "S",
+      "new-content": "M"
+    },
+    "featureMap": {
+      "Dashboards and Visualizations": "Kib: Dashboards",
+      "Discover": "Kib: Discover",
+      "ES|QL in Kibana": "Kib: ES|QL",
+      "Kibana navigation and UI": "Kib: Navigation",
+      "Kibana security": "Kib: General",
+      "Kibana management": "Kib: General"
+    }
+  }
+}

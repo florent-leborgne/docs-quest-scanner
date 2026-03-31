@@ -1,0 +1,27 @@
+{
+  "name": "docs-quest-scanner",
+  "version": "1.0.0",
+  "description": "Scan merged PRs for documentation impact, review with AI-powered analysis, and create doc issues.",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "scan": "tsx src/cli-scan.ts",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@octokit/rest": "^21.1.1",
+    "express": "^5.1.0",
+    "handlebars": "^4.7.8",
+    "open": "^10.1.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.2",
+    "@types/node": "^22.15.3",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
