@@ -94,6 +94,8 @@ Update `data/queue.json` with the enriched `assessment` (including `docsGap`, `e
 
 **Always populate `suggestedTitle`**, even when `needsDocs` is `"no"` — the user may still decide to create an issue, so a blank title is unhelpful.
 
+**Always populate `assessment.reasoning`** — this is rendered in the issue template as "Why this needs docs: …". Write a short 1-sentence rationale (e.g. "New UI toggle that changes the documented layout options." or "Purely cosmetic font change with no user-configurable settings."). Do not omit it even for `needsDocs: "no"` items.
+
 ### Step 3: Start the review UI
 
 ```bash
