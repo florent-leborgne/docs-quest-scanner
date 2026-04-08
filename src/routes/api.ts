@@ -192,6 +192,13 @@ apiRouter.post('/create-issue', async (req, res) => {
           const cat = config.categories.find((c) => c.name === item.category);
           const heading = cat?.metaIssueHeading ?? item.category;
           await addToMetaIssue(owner, repo, meta.number, heading, issue.url);
+
+          // Also update sections for cross-category matches (sequential to avoid stale reads)
+          for (const alsoCat of item.alsoAppliesTo ?? []) {
+            const alsoConfig = config.categories.find((c) => c.name === alsoCat);
+            const alsoHeading = alsoConfig?.metaIssueHeading ?? alsoCat;
+            await addToMetaIssue(owner, repo, meta.number, alsoHeading, issue.url);
+          }
         } else {
           console.warn(`No meta issue found for version ${item.version}`);
         }
