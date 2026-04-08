@@ -1,7 +1,7 @@
 ---
 name: docs-quest-scanner
 version: 2.0.0
-description: Triage Kibana PRs for documentation impact. Scans merged PRs by team label and release note label, assesses doc needs, and opens a review UI to create or dismiss doc issues. Use when doing weekly docs triage, checking what's new in a Kibana release, or when asked to scan PRs for doc impact.
+description: Triage PRs for documentation impact. Scans merged PRs by team label and release note label, assesses doc needs, and opens a review UI to create or dismiss doc issues. Use when doing weekly docs triage, checking what's new in a Kibana release, or when asked to scan PRs for doc impact.
 allowed-tools: Bash, Read, Grep, Glob, Agent, WebFetch, mcp__github__search_pull_requests, mcp__github__pull_request_read, mcp__github__issue_read, mcp__github__issue_write, mcp__github__add_issue_comment, mcp__elastic-docs__search_docs, mcp__elastic-docs__find_related_docs, mcp__elastic-docs__get_document_by_url, mcp__elastic-docs__check_docs_coherence
 ---
 
@@ -92,6 +92,10 @@ Frame from the user's perspective — what they can now do or what changed. Not 
 #### 2h. Update queue.json
 Update `data/queue.json` with the enriched `assessment` (including `docsGap`, `effortTag`, `existingDocs`, `summary`, `needsDocs`, `confidence`) and `suggestedTitle`. Clear `suggestedBody` to empty string so it re-renders fresh from the template.
 
+**Always populate `suggestedTitle`**, even when `needsDocs` is `"no"` — the user may still decide to create an issue, so a blank title is unhelpful.
+
+**Always populate `assessment.reasoning`** — this is rendered in the issue template as "Why this needs docs: …". Write a short 1-sentence rationale (e.g. "New UI toggle that changes the documented layout options." or "Purely cosmetic font change with no user-configurable settings."). Do not omit it even for `needsDocs: "no"` items.
+
 ### Step 3: Start the review UI
 
 ```bash
@@ -122,7 +126,7 @@ Key settings:
 
 ## Issue template
 
-The template is at `~/Documents/github/pr-docs-triage/templates/issue-template.md`. It uses Handlebars syntax and includes: summary, screenshots, PR links, product issue, cross-category note, availability table, and a docs gap analysis section with page-level and section-level findings. The docs gap section replaces the simpler "related pages" list when gap entries are available.
+The template is at `~/Documents/github/pr-docs-triage/templates/issue-template.md`. It uses Handlebars syntax and includes: summary, reasoning, screenshots, PR links, product issue, cross-category note, availability table, and a suggested edits section with page-level and section-level findings.
 
 ## Re-scan behavior
 
@@ -164,7 +168,7 @@ When you're unsure about doc impact, lean toward `check` rather than `no`. It's 
 
 The UI offers two skip actions to build signal over time:
 - **"Skip – no docs"**: the change genuinely doesn't need documentation (internal, cosmetic, bug fix, etc.)
-- **"Skip – tracked"**: the change needs docs but is already tracked elsewhere (existing issue, another team's checklist, etc.)
+- **"Skip – already tracked"**: the change needs docs but is already tracked elsewhere (existing issue, another team's checklist, etc.)
 
 Both are stored in `data/history.json` with the `reason` field. Over time, reviewing the "no docs needed" history can help refine the assessment heuristics above — patterns of what gets dismissed suggest the AI enrichment should mark those as `needsDocs: "no"` more confidently.
 
