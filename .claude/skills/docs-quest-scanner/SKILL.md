@@ -1,8 +1,15 @@
 ---
 name: docs-quest-scanner
-version: 3.0.0
+version: 3.1.0
 description: Triage PRs for documentation impact. Scans merged PRs by team label and release note label, assesses doc needs, and opens a review UI to create or dismiss doc issues. Use when doing weekly docs triage, checking what's new in a Kibana release, or when asked to scan PRs for doc impact.
 allowed-tools: Bash, Read, Grep, Glob, Agent, WebFetch, mcp__github__search_pull_requests, mcp__github__pull_request_read, mcp__github__issue_read, mcp__github__issue_write, mcp__github__add_issue_comment, mcp__elastic-docs__search_docs, mcp__elastic-docs__find_related_docs, mcp__elastic-docs__get_document_by_url, mcp__elastic-docs__check_docs_coherence
+sources:
+  - https://www.elastic.co/docs/contribute-docs/content-types
+  - https://www.elastic.co/docs/contribute-docs/content-types/overviews
+  - https://www.elastic.co/docs/contribute-docs/content-types/how-tos
+  - https://www.elastic.co/docs/contribute-docs/content-types/tutorials
+  - https://www.elastic.co/docs/contribute-docs/content-types/troubleshooting
+  - https://www.elastic.co/docs/contribute-docs/content-types/changelogs
 ---
 
 # PR Docs Triage Skill
@@ -74,18 +81,28 @@ For each item's `existingDocs` URLs (and any additional pages found via search):
 
 **Assembly check — run before finalising each gap entry:**
 
-For any gap where `actionType` would be `create-how-to` or `create-overview` (a new page), first check the surrounding section:
+For any gap where `actionType` would be `create-how-to` or `create-overview` (a new page), run this two-stage check:
+
+*Stage 1 — sibling page check:*
 - Use `mcp__elastic-docs__find_related_docs` to inspect sibling pages in the same section
 - If the section already has a closely related page that covers adjacent territory, downgrade to `add-section` instead — prefer the smallest viable change
-- Only keep `create-how-to` or `create-overview` if no existing sibling page is an appropriate fit
+- Only proceed to stage 2 if no existing sibling page is an appropriate fit
+
+*Stage 2 — content type validation (only for remaining `create-*` candidates):*
+- Fetch the relevant guideline page live using `mcp__elastic-docs__get_document_by_url` with `includeBody: true`:
+  - For `create-how-to`: `https://www.elastic.co/docs/contribute-docs/content-types/how-tos`
+  - For `create-overview`: `https://www.elastic.co/docs/contribute-docs/content-types/overviews`
+- Verify the recommended content actually meets the definition: a how-to must be task-based with a clear user goal and sequential steps; an overview must be concept/reference material not tied to a specific task
+- If the content fits neither cleanly, downgrade to `add-section` on the most relevant existing page
+- If the content type is confirmed, keep the `create-*` recommendation
 
 For any gap that would affect navigation, section structure, or create a need for redirects or cross-reference updates in sibling pages, fold a brief note into the `gap` text (e.g., "Update X; also check the cross-reference in the parent overview page."). Do not add a separate field — keep it in `gap`.
 
 **Assign `actionType` for each entry** (stored in the queue for effortTag derivation, not rendered in the issue):
 - `"update-existing"` — change a value, statement, or step on a page that already covers this topic
 - `"add-section"` — add a new heading + content block to an existing page
-- `"create-how-to"` — new standalone task-based page (only after assembly check confirms no sibling fits)
-- `"create-overview"` — new concept or reference page (only after assembly check)
+- `"create-how-to"` — new standalone task-based page (confirmed by both assembly stages)
+- `"create-overview"` — new concept or reference page (confirmed by both assembly stages)
 - `"review-only"` — page may be affected but evidence is too weak to prescribe a specific change; drop this entry unless the gap is high confidence
 
 Each entry:
