@@ -20,8 +20,13 @@ export interface DocsGapEntry {
   section?: string;
   /** What the current docs say (brief quote or description) */
   currentContent?: string;
-  /** What needs to change and why */
+  /** What needs to change and why (may include assembly implications when relevant) */
   gap: string;
+  /**
+   * What kind of doc work this gap requires — used internally to drive effortTag
+   * and filter marginal gaps before they reach the issue template.
+   */
+  actionType?: 'update-existing' | 'add-section' | 'create-how-to' | 'create-overview' | 'review-only';
 }
 
 /** Assessment of whether a PR needs documentation */
@@ -48,6 +53,11 @@ export interface Assessment {
   docsGap?: DocsGapEntry[];
   /** Effort estimate: quick-fix (change a word/value), update (rewrite a section), new-content (new section or page) */
   effortTag?: 'quick-fix' | 'update' | 'new-content';
+  /**
+   * Whether the PR diff actually supports the stated change — used internally
+   * to calibrate confidence and reasoning; not rendered in the issue template.
+   */
+  premiseAccuracy?: 'accurate' | 'partially-accurate' | 'stale' | 'unsupported';
   /** Screenshot/GIF URLs extracted from PR bodies */
   screenshots?: string[];
 }
