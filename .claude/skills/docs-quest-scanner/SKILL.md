@@ -1,6 +1,6 @@
 ---
 name: docs-quest-scanner
-version: 3.2.0
+version: 3.3.0
 description: Triage PRs for documentation impact. Scans merged PRs by team label and release note label, assesses doc needs, and opens a review UI to create or dismiss doc issues. Use when doing weekly docs triage, checking what's new in a Kibana release, or when asked to scan PRs for doc impact.
 allowed-tools: Bash, Read, Grep, Glob, Agent, WebFetch, mcp__github__search_pull_requests, mcp__github__pull_request_read, mcp__github__issue_read, mcp__github__issue_write, mcp__github__add_issue_comment, mcp__elastic-docs__search_docs, mcp__elastic-docs__find_related_docs, mcp__elastic-docs__get_document_by_url, mcp__elastic-docs__check_docs_coherence
 sources:
@@ -127,7 +127,7 @@ Each entry:
 - Assign `premiseAccuracy` from step 2a
 
 **For `needsDocs: "no"` items that did not hit the API-only early exit in step 2a:**
-Run a lightweight fallback search — `mcp__elastic-docs__search_docs` only, no page-body reading, no assembly check. Populate `existingDocs` with any obviously related pages found. If the search turns up a page that clearly discusses the changed feature, add one tentative `docsGap` entry with `actionType: "review-only"` and a `gap` text prefixed with "Tentative (AI assessed no docs needed):". This gives the writer a starting point if they disagree with the assessment, without implying the change definitely needs documentation.
+Run the full doc analysis from step 2b — read page bodies, compare current content to the diff, apply the assembly check. If the full analysis surfaces a real gap (a page that currently says something the PR changes), upgrade `needsDocs` to `"check"` and note in `reasoning` that the initial assessment was revised based on doc content. If no real gap is found, leave `needsDocs: "no"` but still populate `existingDocs` with any related pages found. This catches cases where the heuristic assessment was wrong.
 
 #### 2d. Write the issue title
 
