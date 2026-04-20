@@ -98,6 +98,13 @@ For any gap where `actionType` would be `create-how-to` or `create-overview` (a 
 
 For any gap that would affect navigation, section structure, or create a need for redirects or cross-reference updates in sibling pages, fold a brief note into the `gap` text (e.g., "Update X; also check the cross-reference in the parent overview page."). Do not add a separate field — keep it in `gap`.
 
+**Apply cumulative documentation rules when writing each gap entry.** Elastic docs serve all active versions simultaneously — refer to the Cumulative documentation model section for the full rules. Key points:
+- Ask: do users on earlier versions still need the old content? If yes, suggest preserving it alongside new content, not replacing it.
+- Choose the lightest format: tagged paragraph/admonition → tagged list items → `applies-switch` tabs.
+- For versioned products, lifecycle state changes are appended (`stack: ga 9.1+, preview =9.0`); for unversioned, the state is replaced.
+- GA/deprecated feature removed from a versioned product → keep content, suggest `stack: removed 9.x`. Removed from unversioned only → content can be deleted.
+- Never suggest version numbers in prose adjacent to a badge.
+
 **Assign `actionType` for each entry** (stored in the queue for effortTag derivation, not rendered in the issue):
 - `"update-existing"` — change a value, statement, or step on a page that already covers this topic
 - `"add-section"` — add a new heading + content block to an existing page
@@ -231,6 +238,68 @@ When you're unsure about doc impact, lean toward `check` rather than `no`. It's 
 - In-product onboarding tooltips/tours (self-contained, no external docs needed)
 - Performance improvements that don't change UX
 - Bug fixes that don't change documented behavior
+
+## Cumulative documentation model
+
+Elastic docs (V3, elastic.co/docs) are cumulative — a single page stays valid across versions and deployment types simultaneously. This shapes how `docsGap` entries and suggested edits should be written.
+
+### Start with two questions
+
+Before suggesting any doc change involving version-scoped content, ask:
+
+1. **Do users on previous versions still need the old information?** Usually yes — docs serve all active versions. Preserve existing content alongside new content rather than replacing it.
+2. **What is the simplest format that works?** Choose the lightest option:
+   - A tagged paragraph or admonition — for additive changes that leave existing content untouched
+   - Tagged bullet points — for lists where some items apply only to certain versions
+   - `applies-switch` tabs — only when content truly diverges and can't be merged into a single flow
+
+### When to suggest an applies_to tag
+
+Suggest adding or updating an `applies_to` tag when:
+- A feature is newly introduced in a specific version
+- A feature changes lifecycle state (preview → beta → GA → deprecated → removed)
+- Availability differs between stack and serverless, or across deployment types (ECE, ECK, ECH, self-managed)
+
+Do **not** suggest tagging: typo fixes, rewording, restructuring, or features that are GA in unversioned (serverless) products with no lifecycle change to call out.
+
+### Which syntax to suggest
+
+There are three forms — choose based on what's being scoped:
+
+| Scope | Form |
+|-------|------|
+| Whole page | YAML frontmatter (`applies_to: stack: ga 9.4`) |
+| Whole section | Fenced block immediately after the heading |
+| List item, definition term, table cell | Inline role at start/end of that element |
+
+Never suggest inline `{applies_to}` mid-sentence in prose, or floating between sentences in a paragraph — flag for restructuring instead.
+
+### Version syntax
+
+| Intent | Syntax |
+|--------|--------|
+| 9.4 and later | `stack: ga 9.4` or `stack: ga 9.4+` |
+| Exact version only | `stack: beta =9.1` |
+| Multiple lifecycle states | `stack: ga 9.1+, preview =9.0` (newest first) |
+| Serverless (unversioned) | `serverless: ga` |
+| Unavailable in a context | `serverless: unavailable` (use sparingly) |
+
+Do not suggest version numbers in prose adjacent to a badge — they contradict the "Planned" badge text before release.
+
+### Lifecycle changes
+
+- **Versioned (stack):** append the new state, keep the old: `stack: ga 9.1+, preview =9.0`
+- **Unversioned (serverless):** replace the old state entirely
+
+### Removals
+
+- GA/deprecated feature removed from a versioned product → keep the content, suggest adding `stack: removed 9.x`
+- Feature removed from an unversioned product only → content can be deleted
+- Feature that was only ever preview/beta → content can be deleted regardless of product type
+
+### Preserve existing content
+
+Docs serve all active versions. When a feature changes behavior, don't suggest replacing old content — suggest adding version-scoped content alongside it, unless the old version is no longer supported.
 
 ## Skip reasons
 
