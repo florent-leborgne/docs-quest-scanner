@@ -506,7 +506,7 @@ function renderHistory() {
   // Group entries by session (scan date), most recent first
   const sessions = new Map();
   for (const entry of entries) {
-    const key = entry.session || formatDate(entry.timestamp);
+    const key = entry.session || entry.timestamp.slice(0, 10);
     if (!sessions.has(key)) sessions.set(key, []);
     sessions.get(key).push(entry);
   }
