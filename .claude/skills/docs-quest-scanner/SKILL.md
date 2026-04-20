@@ -100,7 +100,7 @@ For any gap that would affect navigation, section structure, or create a need fo
 
 **Apply cumulative documentation rules when writing each gap entry.** Elastic docs serve all active versions simultaneously — refer to the Cumulative documentation model section for the full rules. Key points:
 - Ask: do users on earlier versions still need the old content? If yes, suggest preserving it alongside new content, not replacing it.
-- Choose the lightest format: tagged paragraph/admonition → tagged list items → `applies-switch` tabs.
+- Choose the lightest format: inline `{applies_to}` at the start of a paragraph → admonition → tagged list items → `applies-switch` tabs.
 - For versioned products, lifecycle state changes are appended (`stack: ga 9.1+, preview =9.0`); for unversioned, the state is replaced.
 - GA/deprecated feature removed from a versioned product → keep content, suggest `stack: removed 9.x`. Removed from unversioned only → content can be deleted.
 - Never suggest version numbers in prose adjacent to a badge.
@@ -270,9 +270,10 @@ There are three forms — choose based on what's being scoped:
 |-------|------|
 | Whole page | YAML frontmatter (`applies_to: stack: ga 9.4`) |
 | Whole section | Fenced block immediately after the heading |
+| Whole paragraph | Inline role at the start of the paragraph |
 | List item, definition term, table cell | Inline role at start/end of that element |
 
-Never suggest inline `{applies_to}` mid-sentence in prose, or floating between sentences in a paragraph — flag for restructuring instead.
+Never suggest inline `{applies_to}` mid-sentence in prose, or floating between sentences in a paragraph — the scope becomes ambiguous.
 
 ### Version syntax
 
