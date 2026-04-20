@@ -270,18 +270,26 @@ function renderQueue() {
   const empty = document.getElementById('queue-empty');
 
   const footer = document.getElementById('complete-scan-footer');
-
   const hasActiveScan = !!state.queue.scannedAt;
 
   if (state.queue.items.length === 0) {
     container.innerHTML = '';
     empty.style.display = '';
+    if (hasActiveScan) {
+      document.getElementById('queue-empty-heading').textContent = 'All quests resolved!';
+      document.getElementById('queue-empty-message').textContent = 'Every PR has been triaged. Mark the scan complete to log your progress.';
+      document.getElementById('queue-empty-hint').style.display = 'none';
+    } else {
+      document.getElementById('queue-empty-heading').textContent = 'Your quest log is empty';
+      document.getElementById('queue-empty-message').textContent = 'No PRs awaiting triage. Run a scan to discover new quests.';
+      document.getElementById('queue-empty-hint').style.display = '';
+    }
     if (footer) footer.style.display = hasActiveScan ? '' : 'none';
     return;
   }
 
   empty.style.display = 'none';
-  if (footer) footer.style.display = hasActiveScan ? '' : 'none';
+  if (footer) footer.style.display = 'none';
 
   // Group by category
   const grouped = groupByCategory(state.queue.items);
