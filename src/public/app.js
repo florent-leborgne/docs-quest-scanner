@@ -588,8 +588,15 @@ function bindEvents() {
   document.getElementById('btn-scan-empty')?.addEventListener('click', triggerScan);
 
   // Mark complete
-  document.getElementById('btn-complete').addEventListener('click', async () => {
-    if (!confirm('Turn in all quests and return to the inn? The next scan will only pick up PRs merged after the scan date.')) return;
+  const confirmCompleteDialog = document.getElementById('confirm-complete-dialog');
+  document.getElementById('btn-complete').addEventListener('click', () => {
+    confirmCompleteDialog.showModal();
+  });
+  document.getElementById('btn-cancel-complete').addEventListener('click', () => {
+    confirmCompleteDialog.close();
+  });
+  document.getElementById('btn-confirm-complete').addEventListener('click', async () => {
+    confirmCompleteDialog.close();
     try {
       await api('/scan/complete', { method: 'POST' });
       showQuestRewards();
