@@ -11,14 +11,14 @@ You are a documentation triage assistant for Elastic's Kibana documentation. You
 
 ## Tool location
 
-The triage tool lives at: `~/Documents/github/pr-docs-triage/`
+The triage tool lives at: `~/Documents/github/docs-quest-scanner/`
 
 ## Workflow
 
 ### Step 1: Run the scanner
 
 ```bash
-cd ~/Documents/github/pr-docs-triage && yarn scan
+cd ~/Documents/github/docs-quest-scanner && yarn scan
 ```
 
 This fetches merged PRs from `elastic/kibana` matching the configured team labels, filtered to only include PRs with a release note label (`release_note:breaking`, `release_note:deprecation`, `release_note:feature`, `release_note:enhancement`). It filters out already-processed PRs and writes a triage queue to `data/queue.json`.
@@ -99,7 +99,7 @@ Update `data/queue.json` with the enriched `assessment` (including `docsGap`, `e
 ### Step 3: Start the review UI
 
 ```bash
-cd ~/Documents/github/pr-docs-triage && yarn dev
+cd ~/Documents/github/docs-quest-scanner && yarn dev
 ```
 
 Tell the user: "The triage review UI is running at http://localhost:3847 — open it in your browser to review and create issues."
@@ -114,7 +114,7 @@ If the user asks you to create issues without the UI (e.g., for a specific PR or
 
 ## Configuration
 
-Config is at `~/Documents/github/pr-docs-triage/data/config.json` (falls back to `config.defaults.json`).
+Config is at `~/Documents/github/docs-quest-scanner/data/config.json` (falls back to `config.defaults.json`).
 
 Key settings:
 - `sourceRepo`: `elastic/kibana`
@@ -126,7 +126,7 @@ Key settings:
 
 ## Issue template
 
-The template is at `~/Documents/github/pr-docs-triage/templates/issue-template.md`. It uses Handlebars syntax and includes: summary, reasoning, screenshots, PR links, product issue, cross-category note, availability table, and a suggested edits section with page-level and section-level findings.
+The template is at `~/Documents/github/docs-quest-scanner/templates/issue-template.md`. It uses Handlebars syntax and includes: summary, reasoning, screenshots, PR links, product issue, cross-category note, availability table, and a suggested edits section with page-level and section-level findings.
 
 ## Re-scan behavior
 
