@@ -118,7 +118,7 @@ export async function findMetaIssue(
   if (!versionMatch) return null;
   const version = versionMatch[1];
 
-  const query = `repo:${owner}/${repo} is:issue is:open "Kibana ${version}" "checklist" in:title`;
+  const query = `repo:${owner}/${repo} is:issue is:open "Kibana ${version}" in:title`;
   const { data } = await ok.search.issuesAndPullRequests({
     q: query,
     per_page: 5,
