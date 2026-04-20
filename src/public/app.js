@@ -527,7 +527,7 @@ function renderHistory() {
     ].filter(Boolean).join(', ');
 
     html += `
-      <details class="history-session" ${isFirst ? 'open' : ''}>
+      <details class="history-session">
         <summary class="history-session-header">
           <span class="history-session-date">${esc(session)}</span>
           ${versions.map((v) => `<span class="Label Label--secondary">${esc(v)}</span>`).join(' ')}
