@@ -588,22 +588,15 @@ function bindEvents() {
   document.getElementById('btn-scan-empty')?.addEventListener('click', triggerScan);
 
   // Mark complete
-  const confirmCompleteDialog = document.getElementById('confirm-complete-dialog');
   document.getElementById('btn-complete').addEventListener('click', () => {
-    confirmCompleteDialog.showModal();
-  });
-  document.getElementById('btn-cancel-complete').addEventListener('click', () => {
-    confirmCompleteDialog.close();
-  });
-  document.getElementById('btn-confirm-complete').addEventListener('click', async () => {
-    confirmCompleteDialog.close();
-    try {
-      await api('/scan/complete', { method: 'POST' });
-      showQuestRewards();
-      await refreshAll();
-    } catch (err) {
-      showToast(`Error: ${err.message}`, 'error');
-    }
+    showQuestRewards(async () => {
+      try {
+        await api('/scan/complete', { method: 'POST' });
+        await refreshAll();
+      } catch (err) {
+        showToast(`Error: ${err.message}`, 'error');
+      }
+    });
   });
 
   // Settings
@@ -888,7 +881,7 @@ function groupByCategory(items) {
   return map;
 }
 
-function showQuestRewards() {
+function showQuestRewards(onAccept) {
   const rewards = [
     { item: 'Gold', amount: `${Math.floor(Math.random() * 50 + 10)}g ${Math.floor(Math.random() * 99)}s`, icon: '🪙' },
     { item: 'Experience', amount: `${Math.floor(Math.random() * 5000 + 1000)} XP`, icon: '⭐' },
@@ -922,10 +915,13 @@ function showQuestRewards() {
           </li>
         `).join('')}
       </ul>
-      <button class="reward-dismiss">Continue</button>
+      <button class="reward-dismiss">${onAccept ? 'Accept rewards' : 'Continue'}</button>
     </div>
   `;
-  overlay.querySelector('.reward-dismiss').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('.reward-dismiss').addEventListener('click', async () => {
+    overlay.remove();
+    if (onAccept) await onAccept();
+  });
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
   document.body.appendChild(overlay);
 }
