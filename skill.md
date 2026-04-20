@@ -59,9 +59,15 @@ Each entry:
      "pageTitle": "Page title",
      "section": "Specific heading within the page",
      "currentContent": "Brief quote of what the docs currently say",
-     "gap": "What needs to change and why"
+     "gap": "What needs to change and why — always end with a plain-English availability note, e.g. 'Applies from 9.5.0 and in serverless.' or 'Stack only, from 9.5.0.' or 'Serverless only.'"
    }
    ```
+
+**Always close the `gap` sentence with a short availability note** so that a writer (or an AI tool with limited context) knows immediately what scope to apply. Derive it from the PR version label and the serverless estimate:
+- Both stack and serverless: "Applies from X.Y.Z and in serverless."
+- Stack only: "Stack only, from X.Y.Z."
+- Serverless only: "Serverless only."
+- If the feature is in preview or beta, note that too: "Applies from X.Y.Z (technical preview) and in serverless."
 
 #### 2c. Assess doc impact
 - `release_note:breaking` or `release_note:deprecation` → almost always needs docs
