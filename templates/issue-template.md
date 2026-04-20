@@ -38,6 +38,11 @@
 {{/if}}
 | **Feature flag** | {{featureFlag}} |
 
+{{#if createdBy}}
+---
+*Created with [Docs Quest Scanner](https://github.com/florent-leborgne/docs-quest-scanner) by @{{createdBy}}*
+
+{{/if}}
 {{#if docsGap}}
 ## Suggested edits
 

@@ -47,7 +47,7 @@ export function clearTemplateCache(): void {
 /**
  * Render the issue body for a queue item, incorporating user edits.
  */
-export function renderIssueBody(item: QueueItem): string {
+export function renderIssueBody(item: QueueItem, createdBy?: string): string {
   const config = loadConfig();
   const template = getTemplate();
   const edits = item.userEdits ?? {};
@@ -89,6 +89,7 @@ export function renderIssueBody(item: QueueItem): string {
     screenshots: item.assessment.screenshots?.length
       ? item.assessment.screenshots
       : null,
+    createdBy: createdBy ?? null,
   };
 
   return template(data);
