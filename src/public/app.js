@@ -193,7 +193,8 @@ function renderStatusBar() {
 
   // Set title from config
   if (state.config?.title) {
-    document.getElementById('app-title').textContent = state.config.title;
+    const titleEl = document.getElementById('app-title');
+    if (titleEl) titleEl.textContent = state.config.title;
     document.title = state.config.title;
   }
 
