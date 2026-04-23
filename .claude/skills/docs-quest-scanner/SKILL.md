@@ -1,8 +1,15 @@
 ---
 name: docs-quest-scanner
-version: 2.0.0
-description: Triage Kibana PRs for documentation impact. Scans merged PRs by team label and release note label, assesses doc needs, and opens a review UI to create or dismiss doc issues. Use when doing weekly docs triage, checking what's new in a Kibana release, or when asked to scan PRs for doc impact.
+version: 3.5.0
+description: Triage PRs for documentation impact. Scans merged PRs by team label and release note label, assesses doc needs, and opens a review UI to create or dismiss doc issues. Use when doing weekly docs triage, checking what's new in a Kibana release, or when asked to scan PRs for doc impact.
 allowed-tools: Bash, Read, Grep, Glob, Agent, WebFetch, mcp__github__search_pull_requests, mcp__github__pull_request_read, mcp__github__issue_read, mcp__github__issue_write, mcp__github__add_issue_comment, mcp__elastic-docs__search_docs, mcp__elastic-docs__find_related_docs, mcp__elastic-docs__get_document_by_url, mcp__elastic-docs__check_docs_coherence
+sources:
+  - https://www.elastic.co/docs/contribute-docs/content-types
+  - https://www.elastic.co/docs/contribute-docs/content-types/overviews
+  - https://www.elastic.co/docs/contribute-docs/content-types/how-tos
+  - https://www.elastic.co/docs/contribute-docs/content-types/tutorials
+  - https://www.elastic.co/docs/contribute-docs/content-types/troubleshooting
+  - https://www.elastic.co/docs/contribute-docs/content-types/changelogs
 ---
 
 # PR Docs Triage Skill
@@ -11,15 +18,30 @@ You are a documentation triage assistant for Elastic's Kibana documentation. You
 
 ## Tool location
 
-The triage tool lives at: `~/Documents/github/pr-docs-triage/`
+The triage tool lives at: `~/Documents/github/docs-quest-scanner/`
+
+## Environment requirements (read before Step 1 and Step 3)
+
+Both `yarn scan` and `yarn dev` need:
+
+1. **`GITHUB_TOKEN`** — the scanner uses Octokit and fails immediately with `GITHUB_TOKEN environment variable is required` if it's missing. The dev server reads it too. Always inject it from `gh auth token` rather than relying on shell env, since the agent shell does not always inherit the user's environment:
+
+   ```bash
+   GITHUB_TOKEN=$(gh auth token) yarn scan
+   GITHUB_TOKEN=$(gh auth token) yarn dev
+   ```
+
+2. **Unsandboxed filesystem access** — the tool reads and writes `~/Documents/github/docs-quest-scanner/data/{queue,history,last_run}.json`, which lives **outside** the user's typical Cursor workspace (`docs-content`). When you run these commands inside the agent's default sandbox, writes to those files fail with `EPERM: operation not permitted` (visible in the dev server log when the user clicks Skip / Mark complete / Create issue, surfaced as a 500 in the UI). Always launch both `yarn scan` and `yarn dev` with `required_permissions: ["all"]` so they run outside the sandbox.
 
 ## Workflow
 
 ### Step 1: Run the scanner
 
 ```bash
-cd ~/Documents/github/pr-docs-triage && yarn scan
+GITHUB_TOKEN=$(gh auth token) yarn scan
 ```
+
+Run this with `required_permissions: ["all"]` (see Environment requirements above).
 
 This fetches merged PRs from `elastic/kibana` matching the configured team labels, filtered to only include PRs with a release note label (`release_note:breaking`, `release_note:deprecation`, `release_note:feature`, `release_note:enhancement`). It filters out already-processed PRs and writes a triage queue to `data/queue.json`.
 
@@ -34,16 +56,36 @@ The scanner automatically:
 
 After the scan, read `data/queue.json` and for each item, perform deep enrichment. **Use parallel Agent calls** to process items in batches of 6-8 for efficiency. Each batch agent should:
 
-#### 2a. Understand the change
-- Read the PR body, changed files, and release note text
-- Look at i18n string changes, config key changes, and UI component changes in the changed files for concrete signals
+#### 2a. Understand the change and verify the premise
 
-#### 2b. Deep doc analysis
+Read the PR body, changed files, and release note text. Then do two things before any doc search:
+
+**API-only early exit:** Check the changed file paths for these patterns:
+- All changes in `*/server/routes/`, `*/server/schemas/`, `*/server/saved_objects/`, `*/common/types/` with nothing in `*/public/`
+- Only `*.test.ts`, `*.mock.ts`, `index.ts` re-exports, CI config, dependency bumps
+
+If the file pattern is purely server-side with zero `*/public/` or UI component files, and the PR body contains no mention of new UI elements, settings, or user-facing behavior — mark `needsDocs: "no"`, `confidence: 0.9`, write a one-sentence `reasoning`, and **stop**. Do not run the doc search.
+
+**UI signal detection:** Before proceeding to doc analysis, look for concrete signals in the changed files:
+- i18n strings: `i18n.translate(`, `.defaultMessage:` — strong signal of user-visible text change
+- Settings: `uiSettings`, `experimentalFeatures`, `featureFlags`, `config.` — new configurable behavior
+- UI components: files in `*/public/components/`, `*/public/pages/`, `*/public/hooks/` — new or changed UI
+
+**Premise verification:** Cross-check the PR title and release note text against the diff. Assign `premiseAccuracy`:
+- `"accurate"` — the diff clearly supports the stated user-facing change
+- `"partially-accurate"` — some of the claim is in the diff, but parts are missing or overstated
+- `"stale"` — the feature exists but the PR description describes an older state
+- `"unsupported"` — the diff is a refactor, test fix, or internal change that does not match the stated user-facing claim
+
+If `premiseAccuracy` is `"partially-accurate"`, `"stale"`, or `"unsupported"`: reduce `confidence` by 0.2–0.4, note the discrepancy in one clause of `reasoning`, and narrow `docsGap` to only what the diff actually supports. Do not scope docs work for claims the diff does not back up.
+
+#### 2b. Deep doc analysis with content-type and assembly awareness
+
 For each item's `existingDocs` URLs (and any additional pages found via search):
 1. **Read the actual doc page** using `mcp__elastic-docs__get_document_by_url` with `includeBody: true`
 2. **Search broadly** using `mcp__elastic-docs__search_docs` and `mcp__elastic-docs__find_related_docs` to find ALL pages that mention the feature — not just the obvious ones
 3. **Compare** what the docs currently say vs what the PR changes
-4. **Produce a `docsGap` array** — but only include entries that meet the quality bar below
+4. **Produce a `docsGap` array** — but only include entries that pass all quality gates below
 
 **docsGap quality rules — be strict:**
 - **Only flag a gap if the page currently discusses the topic at a level of detail where the omission would be wrong or misleading.** A page that says "the default is Prefix" when it's now Contains is a real gap. A generic overview page that doesn't list specific panel types is NOT a gap just because a new panel type exists.
@@ -52,51 +94,111 @@ For each item's `existingDocs` URLs (and any additional pages found via search):
 - **Do flag pages that describe a workflow that now has a new step or option** that users would miss without the update.
 - **Don't pad the list.** 1-2 high-quality gaps are better than 5 marginal ones. If there's no real gap, return an empty array — that's fine.
 
+**Assembly check — run before finalising each gap entry:**
+
+For any gap where `actionType` would be `create-how-to` or `create-overview` (a new page), run this two-stage check:
+
+*Stage 1 — sibling page check:*
+- Use `mcp__elastic-docs__find_related_docs` to inspect sibling pages in the same section
+- If the section already has a closely related page that covers adjacent territory, downgrade to `add-section` instead — prefer the smallest viable change
+- Only proceed to stage 2 if no existing sibling page is an appropriate fit
+
+*Stage 2 — content type validation (only for remaining `create-*` candidates):*
+- Fetch the relevant guideline page live using `mcp__elastic-docs__get_document_by_url` with `includeBody: true`:
+  - For `create-how-to`: `https://www.elastic.co/docs/contribute-docs/content-types/how-tos`
+  - For `create-overview`: `https://www.elastic.co/docs/contribute-docs/content-types/overviews`
+- Verify the recommended content actually meets the definition: a how-to must be task-based with a clear user goal and sequential steps; an overview must be concept/reference material not tied to a specific task
+- If the content fits neither cleanly, downgrade to `add-section` on the most relevant existing page
+- If the content type is confirmed, keep the `create-*` recommendation
+
+For any gap that would affect navigation, section structure, or create a need for redirects or cross-reference updates in sibling pages, fold a brief note into the `gap` text (e.g., "Update X; also check the cross-reference in the parent overview page."). Do not add a separate field — keep it in `gap`.
+
+**Apply cumulative documentation rules when writing each gap entry.** Elastic docs serve all active versions simultaneously — refer to the Cumulative documentation model section for the full rules. Key points:
+- Ask: do users on earlier versions still need the old content? If yes, suggest preserving it alongside new content, not replacing it.
+- Choose the lightest format: inline `{applies_to}` at the start of a paragraph → admonition → tagged list items → `applies-switch` tabs.
+- For versioned products, lifecycle state changes are appended (`stack: ga 9.1+, preview =9.0`); for unversioned, the state is replaced.
+- GA/deprecated feature removed from a versioned product → keep content, suggest `stack: removed 9.x`. Removed from unversioned only → content can be deleted.
+- Never suggest version numbers in prose adjacent to a badge.
+
+**Assign `actionType` for each entry** (stored in the queue for effortTag derivation, not rendered in the issue):
+- `"update-existing"` — change a value, statement, or step on a page that already covers this topic
+- `"add-section"` — add a new heading + content block to an existing page
+- `"create-how-to"` — new standalone task-based page (confirmed by both assembly stages)
+- `"create-overview"` — new concept or reference page (confirmed by both assembly stages)
+- `"review-only"` — page may be affected but evidence is too weak to prescribe a specific change; drop this entry unless the gap is high confidence
+
 Each entry:
-   ```json
-   {
-     "pageUrl": "https://www.elastic.co/docs/...",
-     "pageTitle": "Page title",
-     "section": "Specific heading within the page",
-     "currentContent": "Brief quote of what the docs currently say",
-     "gap": "What needs to change and why"
-   }
-   ```
+```json
+{
+  "pageUrl": "https://www.elastic.co/docs/...",
+  "pageTitle": "Page title",
+  "section": "Specific heading within the page",
+  "currentContent": "Brief quote of what the docs currently say",
+  "gap": "What needs to change and why — always end with a plain-English availability note, e.g. 'Applies from 9.5.0 and in serverless.' or 'Stack only, from 9.5.0.' or 'Serverless only.'",
+  "actionType": "update-existing"
+}
+```
+
+**Always close the `gap` sentence with a short availability note** so that a writer (or an AI tool with limited context) knows immediately what scope to apply. Derive it from the PR version label and the serverless estimate:
+- Both stack and serverless: "Applies from X.Y.Z and in serverless."
+- Stack only: "Stack only, from X.Y.Z."
+- Serverless only: "Serverless only."
+- If the feature is in preview or beta, note that too: "Applies from X.Y.Z (technical preview) and in serverless."
 
 #### 2c. Assess doc impact
+
 - `release_note:breaking` or `release_note:deprecation` → almost always needs docs
 - `release_note:feature` → likely needs docs
 - `release_note:enhancement` → needs docs unless purely internal (see heuristics below)
-- Assign `needsDocs`: "yes", "no", or "check"
-- Assign `confidence`: 0.0–1.0 based on how certain the assessment is
+- Assign `needsDocs`: `"yes"`, `"no"`, or `"check"`
+- Assign `confidence`: 0.0–1.0 — then apply the premise accuracy adjustment from step 2a
+- Assign `premiseAccuracy` from step 2a
+
+**For `needsDocs: "no"` items that did not hit the API-only early exit in step 2a:**
+Run the full doc analysis from step 2b — read page bodies, compare current content to the diff, apply the assembly check. If the full analysis surfaces a real gap (a page that currently says something the PR changes), upgrade `needsDocs` to `"check"` and note in `reasoning` that the initial assessment was revised based on doc content. If no real gap is found, leave `needsDocs: "no"` but still populate `existingDocs` with any related pages found. This catches cases where the heuristic assessment was wrong.
 
 #### 2d. Write the issue title
+
 Frame from the user's perspective — what they can now do or what changed. Not the PR title.
 - Good: "Save Markdown panels to the Visualize library"
 - Good: "Options List controls now default to Contains search"
 - Bad: "Add library support for Markdown embeddable" (dev-facing)
 
+If `premiseAccuracy` is not `"accurate"`, limit the title to what the diff actually confirms.
+
 #### 2e. Write the summary
+
 2-4 sentences explaining what changed and what it means for users. Incorporate the release note text from the PR body if available. Be specific: new UI elements, new settings, changed defaults, new commands. This goes into the issue body and should give a docs writer enough context to start working.
 
 #### 2f. Assign effort tag
-- `quick-fix`: change a word, value, or sentence (e.g., default value change, badge update)
-- `update`: rewrite a section, add a paragraph, update screenshots
-- `new-content`: new section or new page needed
+
+Derive from the `actionType` values in `docsGap`:
+- Any entry is `create-how-to` or `create-overview` → `"new-content"`
+- Any entry is `add-section` (and none are `create-*`) → `"new-content"` if the section is substantial, otherwise `"update"`
+- All entries are `"update-existing"` → `"update"` if a section rewrite or screenshots, `"quick-fix"` if a value/sentence change
+- Empty `docsGap` → `"quick-fix"` only if a badge/status update is needed, otherwise omit
 
 #### 2g. Detect metadata
+
 - **Feature status**: look for labels like `Feature:Preview`, `Feature:Beta`, or body mentions. Only set if clearly identifiable — omit if unknown (do NOT set to "TBD")
 - **Feature flags**: look for `featureFlags`, `experimentalFeatures`, `uiSettings`, `config.` references
 - **Product issues**: linked GitHub issues (Closes #X, Fixes #X, or issue URLs)
 
 #### 2h. Update queue.json
-Update `data/queue.json` with the enriched `assessment` (including `docsGap`, `effortTag`, `existingDocs`, `summary`, `needsDocs`, `confidence`) and `suggestedTitle`. Clear `suggestedBody` to empty string so it re-renders fresh from the template.
+
+Update `data/queue.json` with the enriched `assessment` (including `docsGap`, `effortTag`, `existingDocs`, `summary`, `needsDocs`, `confidence`, `premiseAccuracy`) and `suggestedTitle`. Clear `suggestedBody` to empty string so it re-renders fresh from the template.
+
+**Always populate `suggestedTitle`**, even when `needsDocs` is `"no"` — the user may still decide to create an issue, so a blank title is unhelpful.
+
+**Always populate `assessment.reasoning`** — this is rendered in the issue template as "Why this needs docs: …". Write a short 1-sentence rationale (e.g. "New UI toggle that changes the documented layout options." or "Purely cosmetic font change with no user-configurable settings."). If premise accuracy reduced confidence, include that in the reasoning (e.g. "PR description claims X but diff only confirms Y."). Do not omit it even for `needsDocs: "no"` items.
 
 ### Step 3: Start the review UI
 
 ```bash
-cd ~/Documents/github/pr-docs-triage && yarn dev
+cd ~/Documents/github/docs-quest-scanner && GITHUB_TOKEN=$(gh auth token) yarn dev
 ```
+
+Run this with `required_permissions: ["all"]` and `block_until_ms: 0` so it starts in the background. The server **must** run unsandboxed — otherwise UI actions like Skip, Mark complete, and Create issue will return 500 errors with `EPERM` when the server tries to write `data/history.json` or `data/queue.json` (see Environment requirements above).
 
 Tell the user: "The triage review UI is running at http://localhost:3847 — open it in your browser to review and create issues."
 
@@ -110,7 +212,7 @@ If the user asks you to create issues without the UI (e.g., for a specific PR or
 
 ## Configuration
 
-Config is at `~/Documents/github/pr-docs-triage/data/config.json` (falls back to `config.defaults.json`).
+Config is at `~/Documents/github/docs-quest-scanner/data/config.json` (falls back to `config.defaults.json`).
 
 Key settings:
 - `sourceRepo`: `elastic/kibana`
@@ -122,7 +224,7 @@ Key settings:
 
 ## Issue template
 
-The template is at `~/Documents/github/pr-docs-triage/templates/issue-template.md`. It uses Handlebars syntax and includes: summary, screenshots, PR links, product issue, cross-category note, availability table, and a docs gap analysis section with page-level and section-level findings. The docs gap section replaces the simpler "related pages" list when gap entries are available.
+The template is at `~/Documents/github/docs-quest-scanner/templates/issue-template.md`. It uses Handlebars syntax and includes: summary, reasoning, screenshots, PR links, product issue, cross-category note, availability table, and a suggested edits section with page-level and section-level findings.
 
 ## Re-scan behavior
 
@@ -150,7 +252,7 @@ When you're unsure about doc impact, lean toward `check` rather than `no`. It's 
 - GA promotions (status badge updates on existing doc pages)
 
 **Things that do NOT need docs:**
-- **Pure API-level changes with no UI impact**: new routes, added request/response parameters, changed HTTP methods or status codes, new saved object types, schema changes — unless there is a corresponding change in the Kibana UI that users interact with. API-only changes are consumed by developers, not end-user docs readers. Mark these as `needsDocs: "no"`.
+- **Pure API-level changes with no UI impact**: new routes, added request/response parameters, changed HTTP methods or status codes, new saved object types, schema changes — unless there is a corresponding change in the Kibana UI that users interact with. API-only changes are consumed by developers, not end-user docs readers. Mark these as `needsDocs: "no"`. Use the file pattern check in step 2a to detect these early.
 - Test fixes, CI changes
 - Internal refactors that don't change behavior
 - Dependency bumps
@@ -160,11 +262,74 @@ When you're unsure about doc impact, lean toward `check` rather than `no`. It's 
 - Performance improvements that don't change UX
 - Bug fixes that don't change documented behavior
 
+## Cumulative documentation model
+
+Elastic docs (V3, elastic.co/docs) are cumulative — a single page stays valid across versions and deployment types simultaneously. This shapes how `docsGap` entries and suggested edits should be written.
+
+### Start with two questions
+
+Before suggesting any doc change involving version-scoped content, ask:
+
+1. **Do users on previous versions still need the old information?** Usually yes — docs serve all active versions. Preserve existing content alongside new content rather than replacing it.
+2. **What is the simplest format that works?** Choose the lightest option:
+   - A tagged paragraph or admonition — for additive changes that leave existing content untouched
+   - Tagged bullet points — for lists where some items apply only to certain versions
+   - `applies-switch` tabs — only when content truly diverges and can't be merged into a single flow
+
+### When to suggest an applies_to tag
+
+Suggest adding or updating an `applies_to` tag when:
+- A feature is newly introduced in a specific version
+- A feature changes lifecycle state (preview → beta → GA → deprecated → removed)
+- Availability differs between stack and serverless, or across deployment types (ECE, ECK, ECH, self-managed)
+
+Do **not** suggest tagging: typo fixes, rewording, restructuring, or features that are GA in unversioned (serverless) products with no lifecycle change to call out.
+
+### Which syntax to suggest
+
+There are three forms — choose based on what's being scoped:
+
+| Scope | Form |
+|-------|------|
+| Whole page | YAML frontmatter (`applies_to: stack: ga 9.4`) |
+| Whole section | Fenced block immediately after the heading |
+| Whole paragraph | Inline role at the start of the paragraph |
+| List item, definition term, table cell | Inline role at start/end of that element |
+
+Never suggest inline `{applies_to}` mid-sentence in prose, or floating between sentences in a paragraph — the scope becomes ambiguous.
+
+### Version syntax
+
+| Intent | Syntax |
+|--------|--------|
+| 9.4 and later | `stack: ga 9.4` or `stack: ga 9.4+` |
+| Exact version only | `stack: beta =9.1` |
+| Multiple lifecycle states | `stack: ga 9.1+, preview =9.0` (newest first) |
+| Serverless (unversioned) | `serverless: ga` |
+| Unavailable in a context | `serverless: unavailable` (use sparingly) |
+
+Do not suggest version numbers in prose adjacent to a badge — they contradict the "Planned" badge text before release.
+
+### Lifecycle changes
+
+- **Versioned (stack):** append the new state, keep the old: `stack: ga 9.1+, preview =9.0`
+- **Unversioned (serverless):** replace the old state entirely
+
+### Removals
+
+- GA/deprecated feature removed from a versioned product → keep the content, suggest adding `stack: removed 9.x`
+- Feature removed from an unversioned product only → content can be deleted
+- Feature that was only ever preview/beta → content can be deleted regardless of product type
+
+### Preserve existing content
+
+Docs serve all active versions. When a feature changes behavior, don't suggest replacing old content — suggest adding version-scoped content alongside it, unless the old version is no longer supported.
+
 ## Skip reasons
 
 The UI offers two skip actions to build signal over time:
 - **"Skip – no docs"**: the change genuinely doesn't need documentation (internal, cosmetic, bug fix, etc.)
-- **"Skip – tracked"**: the change needs docs but is already tracked elsewhere (existing issue, another team's checklist, etc.)
+- **"Skip – already tracked"**: the change needs docs but is already tracked elsewhere (existing issue, another team's checklist, etc.)
 
 Both are stored in `data/history.json` with the `reason` field. Over time, reviewing the "no docs needed" history can help refine the assessment heuristics above — patterns of what gets dismissed suggest the AI enrichment should mark those as `needsDocs: "no"` more confidently.
 
