@@ -20,11 +20,18 @@ export { paths, DATA_DIR, ROOT };
 
 function readJson<T>(path: string): T | null {
   if (!existsSync(path)) return null;
-  return JSON.parse(readFileSync(path, 'utf-8')) as T;
+  try {
+    return JSON.parse(readFileSync(path, 'utf-8')) as T;
+  } catch (err) {
+    throw new Error(`Failed to parse ${path}: ${(err as Error).message}`);
+  }
 }
 
 function writeJson<T>(path: string, data: T): void {
-  writeFileSync(path, JSON.stringify(data, null, 2) + '\n', 'utf-8');
+  const serialized = JSON.stringify(data, null, 2) + '\n';
+  // Verify the serialized output is valid JSON before writing
+  JSON.parse(serialized);
+  writeFileSync(path, serialized, 'utf-8');
 }
 
 /** Load config, falling back to defaults if no user config exists */
