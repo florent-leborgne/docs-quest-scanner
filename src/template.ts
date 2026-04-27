@@ -2,6 +2,8 @@ import Handlebars from 'handlebars';
 import { loadIssueTemplate, loadConfig } from './config.js';
 import type { QueueItem } from './types.js';
 
+Handlebars.registerHelper('eq', (a: unknown, b: unknown) => a === b);
+
 let compiledTemplate: HandlebarsTemplateDelegate | null = null;
 
 /** Extract all version labels from a queue item's PR labels. */
@@ -80,6 +82,7 @@ export function renderIssueBody(item: QueueItem, createdBy?: string): string {
       edits.featureFlag ??
       item.assessment.featureFlag ??
       'None — active by default',
+    needsDocs: item.assessment.needsDocs ?? null,
     existingDocs: item.assessment.existingDocs?.length
       ? item.assessment.existingDocs
       : null,

@@ -44,14 +44,18 @@
 
 {{/if}}
 {{#if docsGap}}
+{{#if (eq needsDocs "no")}}
+## If you chose to document this
+{{else}}
 ## Suggested edits
+{{/if}}
 
 {{#each docsGap}}
 [{{this.pageTitle}}]({{this.pageUrl}}){{#if this.section}} > {{this.section}}{{/if}}
 {{#if this.currentContent}}
 - **What the docs say:** {{this.currentContent}}
 {{/if}}
-- **What to change:** {{this.gap}}
+- **What to add:** {{this.gap}}
 
 {{/each}}
 {{else}}

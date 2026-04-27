@@ -210,6 +210,19 @@ The template is at `~/Documents/github/docs-quest-scanner/templates/issue-templa
 - The last_run date only advances when the user clicks "Mark scan complete" in the UI, and it advances to the **scan date** (`queue.scannedAt`), not the current date — so there is no gap even if triage takes several days
 - Re-running the scan fetches the same date range and merges with the existing queue (preserving user edits)
 
+## Late-labeled PR detection
+
+PRs sometimes receive a team label days or weeks after they merge (e.g., the label is added during a post-merge review). The scanner would miss these permanently under a pure `merged:>=sinceDate` strategy, because by the time the label exists, `sinceDate` has moved forward.
+
+The scanner uses a **dual-query strategy** to catch these:
+
+1. **Primary query** (`merged:>=sinceDate`): the normal incremental scan window
+2. **Secondary query** (`updated:>=sinceDate`): GitHub updates `updated_at` whenever a label is added or removed, so any PR labeled since the last scan appears here regardless of when it merged
+
+Results from both queries are merged and deduplicated. If the secondary query surfaces PRs not in the primary results, the scanner logs: `(Late-label catch: found N additional PRs labeled after merging)`.
+
+A PR whose team label is added before the last scan date will still be missed — in that case, add the PR number to the queue manually via the UI, or re-scan with a temporarily extended `last_run.json` date.
+
 ## Version handling
 
 - The scan does not filter by version — it fetches all PRs matching team + release note labels since the last run date
