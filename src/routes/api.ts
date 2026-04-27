@@ -141,6 +141,7 @@ apiRouter.post('/create-issue', async (req, res) => {
     }
 
     const title = item.userEdits?.title ?? item.suggestedTitle;
+    const ok = getOctokit();
     const { data: authUser } = await ok.users.getAuthenticated().catch(() => ({ data: null }));
     const body = renderIssueBody(item, authUser?.login);
     const targetRepo = item.userEdits?.targetRepo ?? `${config.targetRepo.owner}/${config.targetRepo.repo}`;
