@@ -16,6 +16,12 @@ export function getOctokit(): Octokit {
  * Search for merged PRs matching the given team labels,
  * merged after the given date. No version filter — version is
  * detected per-PR from its labels instead.
+ *
+ * Uses a dual-query strategy to also catch PRs where the team label
+ * was added after the PR merged (late-labeled PRs):
+ *   1. Primary: `merged:>=sinceDate` — the normal incremental scan
+ *   2. Secondary: `updated:>=sinceDate` — catches PRs whose labels
+ *      changed since the last scan even if they merged before it
  */
 export async function searchMergedPRs(
   config: Config,
@@ -25,11 +31,47 @@ export async function searchMergedPRs(
   const ok = getOctokit();
   const { owner, repo } = config.sourceRepo;
 
-  // Build label query: team label + date range (no version filter)
   const teamQ = teamLabels.map((l) => `label:"${l}"`).join(' ');
-  const query = `repo:${owner}/${repo} is:pr is:merged merged:>=${sinceDate} ${teamQ}`;
 
-  const allPRs: PullRequest[] = [];
+  const mergedQuery = `repo:${owner}/${repo} is:pr is:merged merged:>=${sinceDate} ${teamQ}`;
+
+  // Secondary query catches PRs where the team label was added after the PR
+  // merged: GitHub's updated_at changes when labels are added/removed, so any
+  // PR labeled since the last scan appears here even if it merged before sinceDate.
+  const updatedQuery = `repo:${owner}/${repo} is:pr is:merged updated:>=${sinceDate} ${teamQ}`;
+
+  const [primary, secondary] = await Promise.all([
+    paginateSearch(ok, mergedQuery),
+    paginateSearch(ok, updatedQuery),
+  ]);
+
+  // Merge and deduplicate by PR number — primary takes precedence
+  const seen = new Map<number, PullRequest>();
+  for (const pr of primary) {
+    seen.set(pr.number, pr);
+  }
+  let lateCount = 0;
+  for (const pr of secondary) {
+    if (!seen.has(pr.number)) {
+      seen.set(pr.number, pr);
+      lateCount++;
+    }
+  }
+
+  if (lateCount > 0) {
+    console.log(
+      `    (Late-label catch: found ${lateCount} additional PR${lateCount !== 1 ? 's' : ''} labeled after merging)`
+    );
+  }
+
+  return [...seen.values()];
+}
+
+/**
+ * Paginate through all pages of a GitHub search query and return PullRequest objects.
+ */
+async function paginateSearch(ok: Octokit, query: string): Promise<PullRequest[]> {
+  const results: PullRequest[] = [];
   let page = 1;
   const perPage = 100;
 
@@ -43,7 +85,7 @@ export async function searchMergedPRs(
     });
 
     for (const item of result.data.items) {
-      allPRs.push({
+      results.push({
         number: item.number,
         title: item.title,
         url: item.html_url,
@@ -60,8 +102,9 @@ export async function searchMergedPRs(
     page++;
   }
 
-  return allPRs;
+  return results;
 }
+
 
 /**
  * Fetch changed files for a specific PR.
