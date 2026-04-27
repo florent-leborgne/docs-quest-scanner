@@ -1,6 +1,6 @@
 ---
 name: docs-quest-scanner
-version: 3.4.0
+version: 3.5.0
 description: Triage PRs for documentation impact. Scans merged PRs by team label and release note label, assesses doc needs, and opens a review UI to create or dismiss doc issues. Use when doing weekly docs triage, checking what's new in a Kibana release, or when asked to scan PRs for doc impact.
 allowed-tools: Bash, Read, Grep, Glob, Agent, WebFetch, mcp__github__search_pull_requests, mcp__github__pull_request_read, mcp__github__issue_read, mcp__github__issue_write, mcp__github__add_issue_comment, mcp__elastic-docs__search_docs, mcp__elastic-docs__find_related_docs, mcp__elastic-docs__get_document_by_url, mcp__elastic-docs__check_docs_coherence
 sources:
@@ -20,13 +20,28 @@ You are a documentation triage assistant for Elastic's Kibana documentation. You
 
 The triage tool lives at: `~/Documents/github/docs-quest-scanner/`
 
+## Environment requirements (read before Step 1 and Step 3)
+
+Both `yarn scan` and `yarn dev` need:
+
+1. **`GITHUB_TOKEN`** — the scanner uses Octokit and fails immediately with `GITHUB_TOKEN environment variable is required` if it's missing. The dev server reads it too. Always inject it from `gh auth token` rather than relying on shell env, since the agent shell does not always inherit the user's environment:
+
+   ```bash
+   GITHUB_TOKEN=$(gh auth token) yarn scan
+   GITHUB_TOKEN=$(gh auth token) yarn dev
+   ```
+
+2. **Unsandboxed filesystem access** — the tool reads and writes `~/Documents/github/docs-quest-scanner/data/{queue,history,last_run}.json`, which lives **outside** the user's typical Cursor workspace (`docs-content`). When you run these commands inside the agent's default sandbox, writes to those files fail with `EPERM: operation not permitted` (visible in the dev server log when the user clicks Skip / Mark complete / Create issue, surfaced as a 500 in the UI). Always launch both `yarn scan` and `yarn dev` with `required_permissions: ["all"]` so they run outside the sandbox.
+
 ## Workflow
 
 ### Step 1: Run the scanner
 
 ```bash
-cd ~/Documents/github/docs-quest-scanner && yarn scan
+GITHUB_TOKEN=$(gh auth token) yarn scan
 ```
+
+Run this with `required_permissions: ["all"]` (see Environment requirements above).
 
 This fetches merged PRs from `elastic/kibana` matching the configured team labels, filtered to only include PRs with a release note label (`release_note:breaking`, `release_note:deprecation`, `release_note:feature`, `release_note:enhancement`). It filters out already-processed PRs and writes a triage queue to `data/queue.json`.
 
@@ -119,10 +134,16 @@ Each entry:
   "pageTitle": "Page title",
   "section": "Specific heading within the page",
   "currentContent": "Brief quote of what the docs currently say",
-  "gap": "What needs to change and why",
+  "gap": "What needs to change and why — always end with a plain-English availability note, e.g. 'Applies from 9.5.0 and in serverless.' or 'Stack only, from 9.5.0.' or 'Serverless only.'",
   "actionType": "update-existing"
 }
 ```
+
+**Always close the `gap` sentence with a short availability note** so that a writer (or an AI tool with limited context) knows immediately what scope to apply. Derive it from the PR version label and the serverless estimate:
+- Both stack and serverless: "Applies from X.Y.Z and in serverless."
+- Stack only: "Stack only, from X.Y.Z."
+- Serverless only: "Serverless only."
+- If the feature is in preview or beta, note that too: "Applies from X.Y.Z (technical preview) and in serverless."
 
 #### 2c. Assess doc impact
 
@@ -133,8 +154,12 @@ Each entry:
 - Assign `confidence`: 0.0–1.0 — then apply the premise accuracy adjustment from step 2a
 - Assign `premiseAccuracy` from step 2a
 
-**For `needsDocs: "no"` items that did not hit the API-only early exit in step 2a:**
-Run the full doc analysis from step 2b — read page bodies, compare current content to the diff, apply the assembly check. If the full analysis surfaces a real gap (a page that currently says something the PR changes), upgrade `needsDocs` to `"check"` and note in `reasoning` that the initial assessment was revised based on doc content. If no real gap is found, leave `needsDocs: "no"` but still populate `existingDocs` with any related pages found. This catches cases where the heuristic assessment was wrong.
+**For all items — including `needsDocs: "no"`** — always run the full doc analysis from step 2b and always produce a populated `docsGap`. This is not optional.
+
+- If the analysis finds a real gap (a page that currently says something the PR changes), upgrade `needsDocs` to `"check"` and note in `reasoning` that the initial assessment was revised.
+- If the feature isn't strictly missing from the docs but a writer *could* add coverage, still populate `docsGap` — frame each entry's `gap` field as "what you'd need to add if you chose to document this", including surrounding context: what the feature is, how it fits the existing section, what a writer would need to know to add it. This gives the user a proper analysis to act on even when the AI verdict is "no".
+- The API-only early exit in step 2a is the **only** case where `docsGap` may be left empty. For every other item, `docsGap` must have at least one entry.
+- Never leave `docsGap` empty just because `needsDocs` is `"no"` — a bare `existingDocs` list with no analysis is not useful to the user.
 
 #### 2d. Write the issue title
 
@@ -167,6 +192,18 @@ Derive from the `actionType` values in `docsGap`:
 
 Update `data/queue.json` with the enriched `assessment` (including `docsGap`, `effortTag`, `existingDocs`, `summary`, `needsDocs`, `confidence`, `premiseAccuracy`) and `suggestedTitle`. Clear `suggestedBody` to empty string so it re-renders fresh from the template.
 
+**Never write queue.json using string replacement (StrReplace, sed, etc.).** PR body content from GitHub often contains double quotes, backslashes, and other characters that break hand-crafted JSON.
+
+Instead, write enrichments to a separate `data/enrichments.json` file (keyed by item ID), then apply them with the repo's merge script:
+
+```bash
+# Write your enrichments as a JSON object keyed by item ID:
+# { "kibana-12345": { "needsDocs": "yes", "docsGap": [...], ... }, ... }
+node scripts/merge-enrichments.mjs
+```
+
+This goes through `JSON.parse` + `JSON.stringify` end-to-end and guarantees all strings are properly escaped. The script also clears `suggestedBody` on each enriched item so the server re-renders fresh from the template.
+
 **Always populate `suggestedTitle`**, even when `needsDocs` is `"no"` — the user may still decide to create an issue, so a blank title is unhelpful.
 
 **Always populate `assessment.reasoning`** — this is rendered in the issue template as "Why this needs docs: …". Write a short 1-sentence rationale (e.g. "New UI toggle that changes the documented layout options." or "Purely cosmetic font change with no user-configurable settings."). If premise accuracy reduced confidence, include that in the reasoning (e.g. "PR description claims X but diff only confirms Y."). Do not omit it even for `needsDocs: "no"` items.
@@ -174,8 +211,10 @@ Update `data/queue.json` with the enriched `assessment` (including `docsGap`, `e
 ### Step 3: Start the review UI
 
 ```bash
-cd ~/Documents/github/docs-quest-scanner && yarn dev
+cd ~/Documents/github/docs-quest-scanner && GITHUB_TOKEN=$(gh auth token) yarn dev
 ```
+
+Run this with `required_permissions: ["all"]` and `block_until_ms: 0` so it starts in the background. The server **must** run unsandboxed — otherwise UI actions like Skip, Mark complete, and Create issue will return 500 errors with `EPERM` when the server tries to write `data/history.json` or `data/queue.json` (see Environment requirements above).
 
 Tell the user: "The triage review UI is running at http://localhost:3847 — open it in your browser to review and create issues."
 
