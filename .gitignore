@@ -7,3 +7,8 @@ data/last_run.json
 data/enrichments.json
 .env
 *.tgz
+
+# Rendered SKILL.md created by scripts/setup.sh when the repo is cloned
+# inside ~/.claude/skills/. Don't commit it — only the template at
+# .claude/skills/docs-quest-scanner/SKILL.md is the source of truth.
+/SKILL.md

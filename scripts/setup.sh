@@ -91,36 +91,38 @@ read -p "  Choice [1]: " SKILL_CHOICE
 SKILL_CHOICE="${SKILL_CHOICE:-1}"
 
 TOOL_DIR=$(pwd)
+SKILL_SOURCE="$TOOL_DIR/.claude/skills/docs-quest-scanner/SKILL.md"
+
+if [ ! -f "$SKILL_SOURCE" ]; then
+  echo "  ✗ Cannot find canonical SKILL.md at $SKILL_SOURCE"
+  echo "    The repo layout looks wrong — re-clone and try again."
+  exit 1
+fi
 
 if [ "$SKILL_CHOICE" = "2" ]; then
-  SKILL_DIR="$TOOL_DIR/.claude/skills/pr-docs-triage"
+  SKILL_DIR="$TOOL_DIR/.claude/skills/docs-quest-scanner"
 else
-  SKILL_DIR="$HOME/.claude/skills/pr-docs-triage"
+  SKILL_DIR="$HOME/.claude/skills/docs-quest-scanner"
 fi
 
 mkdir -p "$SKILL_DIR"
 
-cat > "$SKILL_DIR/skill.md" << SKILL_EOF
----
-name: pr-docs-triage
-version: 2.0.0
-description: Triage PRs for documentation impact. Scans merged PRs by team label and release note label, assesses doc needs, and opens a review UI to create or dismiss doc issues.
-allowed-tools: Bash, Read, Grep, Glob, Agent, WebFetch, mcp__github__search_pull_requests, mcp__github__pull_request_read, mcp__github__issue_read, mcp__github__issue_write, mcp__github__add_issue_comment, mcp__elastic-docs__search_docs, mcp__elastic-docs__find_related_docs, mcp__elastic-docs__get_document_by_url, mcp__elastic-docs__check_docs_coherence
----
+# Render the canonical SKILL.md template into the install dir, substituting
+# __TOOL_DIR__ with this clone's absolute path so the skill works regardless
+# of where the repo was cloned. Re-run setup.sh after `git pull` to refresh.
+if [ -e "$SKILL_DIR/SKILL.md" ] || [ -L "$SKILL_DIR/SKILL.md" ]; then
+  rm -rf "$SKILL_DIR/SKILL.md"
+fi
+sed "s|__TOOL_DIR__|$TOOL_DIR|g" "$SKILL_SOURCE" > "$SKILL_DIR/SKILL.md"
 
-# PR Docs Triage Skill
-
-The triage tool lives at: \`$TOOL_DIR/\`
-
-Run \`cd $TOOL_DIR && yarn scan\` to scan, then \`yarn dev\` to start the review UI.
-SKILL_EOF
-
-echo "  ✓ Skill installed at $SKILL_DIR"
+echo "  ✓ Skill installed at $SKILL_DIR/SKILL.md"
+echo "    (Re-run ./scripts/setup.sh after 'git pull' to update.)"
 
 echo ""
 echo "  ✓ Setup complete!"
 echo ""
 echo "  Quick start:"
 echo "    1. Edit data/config.json for your team"
-echo "    2. In Claude Code, run /pr-docs-triage"
+echo "    2. Restart Claude Code so the skill is discovered"
+echo "    3. In Claude Code, run /docs-quest-scanner"
 echo ""

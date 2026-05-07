@@ -18,7 +18,7 @@ You are a documentation triage assistant for Elastic's Kibana documentation. You
 
 ## Tool location
 
-The triage tool lives at: `~/Documents/github/docs-quest-scanner/`
+The triage tool lives at: `__TOOL_DIR__/`
 
 ## Environment requirements (read before Step 1 and Step 3)
 
@@ -31,7 +31,7 @@ Both `yarn scan` and `yarn dev` need:
    GITHUB_TOKEN=$(gh auth token) yarn dev
    ```
 
-2. **Unsandboxed filesystem access** — the tool reads and writes `~/Documents/github/docs-quest-scanner/data/{queue,history,last_run}.json`, which lives **outside** the user's typical Cursor workspace (`docs-content`). When you run these commands inside the agent's default sandbox, writes to those files fail with `EPERM: operation not permitted` (visible in the dev server log when the user clicks Skip / Mark complete / Create issue, surfaced as a 500 in the UI). Always launch both `yarn scan` and `yarn dev` with `required_permissions: ["all"]` so they run outside the sandbox.
+2. **Unsandboxed filesystem access** — the tool reads and writes `__TOOL_DIR__/data/{queue,history,last_run}.json`, which lives **outside** the user's typical Cursor workspace (`docs-content`). When you run these commands inside the agent's default sandbox, writes to those files fail with `EPERM: operation not permitted` (visible in the dev server log when the user clicks Skip / Mark complete / Create issue, surfaced as a 500 in the UI). Always launch both `yarn scan` and `yarn dev` with `required_permissions: ["all"]` so they run outside the sandbox.
 
 ## Workflow
 
@@ -211,7 +211,7 @@ This goes through `JSON.parse` + `JSON.stringify` end-to-end and guarantees all 
 ### Step 3: Start the review UI
 
 ```bash
-cd ~/Documents/github/docs-quest-scanner && GITHUB_TOKEN=$(gh auth token) yarn dev
+cd __TOOL_DIR__ && GITHUB_TOKEN=$(gh auth token) yarn dev
 ```
 
 Run this with `required_permissions: ["all"]` and `block_until_ms: 0` so it starts in the background. The server **must** run unsandboxed — otherwise UI actions like Skip, Mark complete, and Create issue will return 500 errors with `EPERM` when the server tries to write `data/history.json` or `data/queue.json` (see Environment requirements above).
@@ -228,7 +228,7 @@ If the user asks you to create issues without the UI (e.g., for a specific PR or
 
 ## Configuration
 
-Config is at `~/Documents/github/docs-quest-scanner/data/config.json` (falls back to `config.defaults.json`).
+Config is at `__TOOL_DIR__/data/config.json` (falls back to `config.defaults.json`).
 
 Key settings:
 - `sourceRepo`: `elastic/kibana`
@@ -240,7 +240,7 @@ Key settings:
 
 ## Issue template
 
-The template is at `~/Documents/github/docs-quest-scanner/templates/issue-template.md`. It uses Handlebars syntax and includes: summary, reasoning, screenshots, PR links, product issue, cross-category note, availability table, and a suggested edits section with page-level and section-level findings.
+The template is at `__TOOL_DIR__/templates/issue-template.md`. It uses Handlebars syntax and includes: summary, reasoning, screenshots, PR links, product issue, cross-category note, availability table, and a suggested edits section with page-level and section-level findings.
 
 ## Re-scan behavior
 
