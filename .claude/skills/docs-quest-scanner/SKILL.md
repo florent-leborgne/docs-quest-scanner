@@ -1,6 +1,6 @@
 ---
 name: docs-quest-scanner
-version: 3.6.0
+version: 3.7.0
 description: Triage PRs for documentation impact. Scans merged PRs by team label and release note label, assesses doc needs, and opens a review UI to create or dismiss doc issues. Use when doing weekly docs triage, checking what's new in a Kibana release, or when asked to scan PRs for doc impact.
 allowed-tools: Bash, Read, Grep, Glob, Agent, WebFetch, mcp__github__search_pull_requests, mcp__github__pull_request_read, mcp__github__issue_read, mcp__github__issue_write, mcp__github__add_issue_comment, mcp__elastic-docs__search_docs, mcp__elastic-docs__find_related_docs, mcp__elastic-docs__get_document_by_url, mcp__elastic-docs__check_docs_coherence
 sources:
@@ -307,6 +307,14 @@ The scanner uses a **dual-query strategy** to catch these:
 Results from both queries are merged and deduplicated. If the secondary query surfaces PRs not in the primary results, the scanner logs: `(Late-label catch: found N additional PRs labeled after merging)`.
 
 A PR whose team label is added before the last scan date will still be missed — in that case, add the PR number to the queue manually via the UI, or re-scan with a temporarily extended `last_run.json` date.
+
+### Filtering stale label edits
+
+The secondary query also surfaces PRs whose only recent activity is an unrelated label edit (e.g. a `v9.x` label removed years after merge). These bump `updated_at` and look identical to a genuine late-label catch, but the PR itself is stale.
+
+To filter them out, the scanner drops late-label entries whose `mergedAt` is more than **`maxMergeAgeMonths`** before `sinceDate` (default: 6). When this fires, the scanner logs: `(Skipped N late-label entries merged >6 months ago)`. Override the default by setting `maxMergeAgeMonths` in `data/config.json`.
+
+This trades some recall (a PR genuinely labeled for the first time more than 6 months after merging won't be caught) for much better precision — that case is rare, and surfacing every random label edit on year-old PRs is worse.
 
 ## Version handling
 

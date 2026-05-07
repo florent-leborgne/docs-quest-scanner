@@ -50,17 +50,36 @@ export async function searchMergedPRs(
   for (const pr of primary) {
     seen.set(pr.number, pr);
   }
+
+  // Compute the merge-age cutoff: late-label entries merged before this date
+  // are filtered out. They're typically PRs whose only recent activity is an
+  // unrelated label edit (e.g., a version label removed years after merge).
+  const maxAgeMonths = config.maxMergeAgeMonths ?? 6;
+  const cutoff = new Date(sinceDate);
+  cutoff.setMonth(cutoff.getMonth() - maxAgeMonths);
+  const cutoffMs = cutoff.getTime();
+
   let lateCount = 0;
+  let staleCount = 0;
   for (const pr of secondary) {
-    if (!seen.has(pr.number)) {
-      seen.set(pr.number, pr);
-      lateCount++;
+    if (seen.has(pr.number)) continue;
+    const mergedMs = pr.mergedAt ? Date.parse(pr.mergedAt) : NaN;
+    if (Number.isFinite(mergedMs) && mergedMs < cutoffMs) {
+      staleCount++;
+      continue;
     }
+    seen.set(pr.number, pr);
+    lateCount++;
   }
 
   if (lateCount > 0) {
     console.log(
       `    (Late-label catch: found ${lateCount} additional PR${lateCount !== 1 ? 's' : ''} labeled after merging)`
+    );
+  }
+  if (staleCount > 0) {
+    console.log(
+      `    (Skipped ${staleCount} late-label entr${staleCount !== 1 ? 'ies' : 'y'} merged >${maxAgeMonths} months ago)`
     );
   }
 

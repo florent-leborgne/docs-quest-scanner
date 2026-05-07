@@ -155,6 +155,15 @@ export interface Config {
    * but are included for completeness.
    */
   releaseNoteLabels: string[];
+  /**
+   * Drop late-label-catch results whose mergedAt is older than this many
+   * months before sinceDate. The dual-query strategy uses `updated:>=sinceDate`
+   * to catch PRs labeled after merge, but it also surfaces PRs whose only
+   * recent activity is an unrelated label edit. Setting a cap filters out
+   * stale edits on old PRs without affecting the primary `merged:>=` query.
+   * Default: 6.
+   */
+  maxMergeAgeMonths?: number;
   issueLabels: string[];
   /**
    * GitHub Projects v2 integration. When set, newly created issues

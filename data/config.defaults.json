@@ -39,6 +39,7 @@
     "release_note:enhancement"
   ],
   "issueLabels": ["Team:Experience"],
+  "maxMergeAgeMonths": 6,
   "project": {
     "org": "elastic",
     "number": 1034,
