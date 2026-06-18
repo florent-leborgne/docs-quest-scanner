@@ -8,7 +8,7 @@
     "start": "tsx src/server.ts",
     "scan": "tsx src/cli-scan.ts",
     "build": "tsc",
-    "deploy": "rsync -av --exclude='data/' --exclude='node_modules/' --exclude='.git/' --exclude='dist/' . ~/.claude/skills/docs-quest-scanner/ && sed -i '' 's|__TOOL_DIR__|'\"$HOME\"'/.claude/skills/docs-quest-scanner/|g' ~/.claude/skills/docs-quest-scanner/SKILL.md && echo 'Deployed. Run yarn install in the skill directory if dependencies changed.'"
+    "deploy": "rsync -av --exclude='data/' --exclude='node_modules/' --exclude='.git/' --exclude='dist/' --exclude='.claude/' . ~/.claude/skills/docs-quest-scanner/ && cp .claude/skills/docs-quest-scanner/SKILL.md ~/.claude/skills/docs-quest-scanner/SKILL.md && sed -i '' 's|__TOOL_DIR__|'\"$HOME\"'/.claude/skills/docs-quest-scanner/|g' ~/.claude/skills/docs-quest-scanner/SKILL.md && echo 'Deployed. Run yarn install in the skill directory if dependencies changed.'"
   },
   "dependencies": {
     "@octokit/rest": "^21.1.1",
