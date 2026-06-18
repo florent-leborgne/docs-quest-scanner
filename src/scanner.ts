@@ -467,6 +467,10 @@ function basicAssessment(prs: PullRequest[]): Assessment {
     featureStatus,
     featureFlag,
     serverlessEstimate: undefined,
+    // Default to 'yes': most Kibana platform features ship to serverless. The AI
+    // enrichment layer verifies against config/serverless.yml and flips to 'no'
+    // (or scopes by project type) when there's evidence. See SKILL.md step 2c.
+    serverlessApplies: 'yes',
     existingDocs: [],
     productIssue,
   };

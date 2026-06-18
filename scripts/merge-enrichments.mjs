@@ -16,7 +16,8 @@ const featureFields = new Set(['suggestedTitle']);
 const assessmentFields = new Set([
   'needsDocs', 'confidence', 'premiseAccuracy', 'summary', 'reasoning',
   'existingDocs', 'docsGap', 'effortTag', 'featureStatus', 'featureFlags',
-  'featureFlag', 'productIssue', 'screenshots'
+  'featureFlag', 'productIssue', 'screenshots',
+  'serverlessApplies', 'serverlessEstimate'
 ]);
 for (const [id, raw] of Object.entries(rawEnrichments)) {
   const flat = { ...raw };
@@ -55,6 +56,11 @@ for (const item of queue.items) {
   else if (e.effortTag === null) delete item.assessment.effortTag;
   if (e.featureStatus) item.assessment.featureStatus = e.featureStatus;
   else if (e.featureStatus === null) delete item.assessment.featureStatus;
+  // Serverless applicability gates the availability cell ('no' → "N/A").
+  if (e.serverlessApplies) item.assessment.serverlessApplies = e.serverlessApplies;
+  else if (e.serverlessApplies === null) delete item.assessment.serverlessApplies;
+  if (e.serverlessEstimate) item.assessment.serverlessEstimate = e.serverlessEstimate;
+  else if (e.serverlessEstimate === null) delete item.assessment.serverlessEstimate;
   // Accept singular featureFlag string or plural featureFlags array.
   const flags = e.featureFlags || (e.featureFlag ? [e.featureFlag] : null);
   if (flags && flags.length) item.assessment.featureFlags = flags;

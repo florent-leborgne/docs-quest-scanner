@@ -447,7 +447,7 @@ function renderCardBody(item) {
         <td>
           <div class="avail-items">
             ${versions.map(v => `<span class="avail-tag">${esc(v)}</span>`).join('')}
-            ${slWeek ? `<span class="avail-tag avail-tag--sl">${esc(slWeek)} (serverless)</span>` : ''}
+            ${slWeek ? `<span class="avail-tag avail-tag--sl">${(slWeek === 'N/A' || slWeek.startsWith('TBD')) ? `serverless: ${esc(slWeek)}` : `${esc(slWeek)} (serverless)`}</span>` : ''}
             ${featureStatus ? `<span class="avail-status-badge">${esc(featureStatus)}</span>` : ''}
             ${featureFlag ? `<span class="avail-tag avail-tag--flag">${esc(featureFlag)}</span>` : ''}
           </div>
@@ -1018,9 +1018,12 @@ function allVersions(item) {
 /** Compute the effective serverless week for an item (uses the latest merge date). */
 function effectiveServerless(item) {
   const edits = item.userEdits ?? {};
+  const applies = edits.serverlessApplies ?? item.assessment?.serverlessApplies ?? 'yes';
+  if (applies === 'no') return 'N/A';
   if (edits.serverlessEstimate || item.assessment?.serverlessEstimate) {
     return edits.serverlessEstimate || item.assessment.serverlessEstimate;
   }
+  if (applies === 'unknown') return 'TBD — verify';
   const latestMerge = item.prs
     .map((pr) => pr.mergedAt)
     .filter(Boolean)
@@ -1035,7 +1038,8 @@ function availabilityBadge(item) {
   const sl = effectiveServerless(item);
   const parts = [];
   if (versions.length) parts.push(versions.join(', '));
-  if (sl) parts.push(`${sl} (serverless)`);
+  if (sl === 'N/A') parts.push('serverless: N/A');
+  else if (sl) parts.push(`${sl} (serverless)`);
   return parts.join(' · ');
 }
 

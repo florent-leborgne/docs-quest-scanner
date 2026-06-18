@@ -52,6 +52,13 @@ export interface Assessment {
   featureFlag?: string;
   /** Estimated serverless release date */
   serverlessEstimate?: string;
+  /**
+   * Whether the change reaches serverless at all. Defaults to 'yes' — most Kibana
+   * platform features ship to serverless and versioned stack. Set to 'no' only with
+   * config evidence (plugin disabled in config/serverless.yml). 'unknown' only when
+   * no owning plugin can be resolved. Gates serverlessEstimate: 'no' renders "N/A".
+   */
+  serverlessApplies?: 'yes' | 'no' | 'unknown';
   /** URLs to existing documentation pages */
   existingDocs?: string[];
   /** Link to the product-side issue if found */
@@ -93,6 +100,7 @@ export interface QueueItem {
     featureStatus?: string;
     featureFlag?: string;
     serverlessEstimate?: string;
+    serverlessApplies?: 'yes' | 'no' | 'unknown';
     existingDocs?: string;
     targetRepo?: string;
   };

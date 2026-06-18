@@ -54,6 +54,14 @@ export function renderIssueBody(item: QueueItem, createdBy?: string): string {
   const template = getTemplate();
   const edits = item.userEdits ?? {};
 
+  const serverlessApplies =
+    edits.serverlessApplies ?? item.assessment.serverlessApplies ?? 'yes';
+  const latestMerge = item.prs
+    .map((pr) => pr.mergedAt)
+    .filter(Boolean)
+    .sort()
+    .pop();
+
   const data = {
     summary: item.assessment.summary,
     reasoning: item.assessment.reasoning ?? null,
@@ -68,12 +76,13 @@ export function renderIssueBody(item: QueueItem, createdBy?: string): string {
       : null,
     stackVersion: extractVersions(item) || 'TBD',
     serverlessEstimate:
-      edits.serverlessEstimate ??
-      item.assessment.serverlessEstimate ??
-      computeServerlessWeek(
-        item.prs.map((pr) => pr.mergedAt).filter(Boolean).sort().pop()
-      ) ??
-      'TBD',
+      serverlessApplies === 'no'
+        ? 'N/A'
+        : edits.serverlessEstimate ??
+          item.assessment.serverlessEstimate ??
+          (serverlessApplies === 'unknown'
+            ? 'TBD — verify serverless availability'
+            : computeServerlessWeek(latestMerge) ?? 'TBD'),
     featureStatus:
       edits.featureStatus ??
       item.assessment.featureStatus ??

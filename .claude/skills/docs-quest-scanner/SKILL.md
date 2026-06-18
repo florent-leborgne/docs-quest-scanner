@@ -50,7 +50,7 @@ The scanner automatically:
 - Extracts screenshots/GIFs from PR bodies (stored in `assessment.screenshots`)
 - Extracts release note text from PR bodies (stored in `releaseNoteText`)
 - Detects version from PR labels (e.g., `v9.4.0`)
-- Computes serverless estimates (merge date + 7 days)
+- Computes serverless estimates (merge date + 7 days) — only for features confirmed to ship to serverless; the AI layer (step 2b) gates this and renders **N/A** for stack-only features
 
 ### Step 2: Enrich with deep AI assessment
 
@@ -141,9 +141,25 @@ Each entry:
 }
 ```
 
-**Always close the `gap` sentence with a short availability note** so that a writer (or an AI tool with limited context) knows immediately what scope to apply. Derive it from the PR version label and the serverless estimate:
+**Determine serverless applicability** before writing the availability note — it gates both the note and the **Serverless** cell in the issue's availability table. Default to `serverlessApplies: "yes"`: most {{kib}} platform features ship to both serverless and versioned stack. Flip to `"no"` only with config evidence. The check is deterministic:
+
+1. From the PR's changed files, find the owning plugin directory — the folder containing `kibana.jsonc` (for example `x-pack/platform/plugins/private/snapshot_restore/`).
+2. Read that `kibana.jsonc`:
+   - `configPath` joined with `.` is the config key — `["xpack", "snapshot_restore"]` → `xpack.snapshot_restore`.
+   - `group` is the project-type scope: `platform` (all serverless project types) or `observability` / `security` / `search` (that solution's project type only).
+3. Check `config/serverless.yml` at HEAD (the base config applied to every serverless project type):
+   - `<configKey>.enabled: false` or `<configKey>.ui.enabled: false` present → `serverlessApplies: "no"` (UI not exposed in serverless). Currently disabled examples: `snapshot_restore`, `ilm`, `watcher`, `ccr`, `rollup`, `remote_clusters`, `upgrade_assistant`, `license_management`.
+   - Not present → the plugin is enabled → `serverlessApplies: "yes"`.
+4. If enabled in base and `group: platform`, also scan the project overlays (`config/serverless.es.yml`, `serverless.oblt.yml`, `serverless.security.yml`) for `<configKey>.enabled: false`. Disabled in all three → `"no"`. Disabled in some → keep `"yes"` and name the exception in the note. Disabled in none → `"yes"` (all project types).
+5. For solution plugins (`group` ≠ `platform`), the feature ships only to that solution's serverless project type — `"yes"`, scoped to that project type in the note.
+6. Use `"unknown"` only when no owning plugin/manifest can be resolved (for example a change entirely in shared `packages/` with no `configPath`) **and** the surface isn't an obvious platform UI. For {{kib}} you can almost always resolve a plugin — prefer that over guessing.
+
+For non-{{kib}} repos (for example {{es}}), there is no `serverless.yml` plugin gate: default to `"yes"` (serverless runs the same engine) and set `"no"` only when the PR, issue, or the setting's reference says it's stack-only (for example node- or cluster-level settings that serverless manages for you).
+
+**Always close the `gap` sentence with a short availability note** so a writer (or an AI tool with limited context) knows the scope immediately. Derive it from the PR version label and `serverlessApplies`:
 - Both stack and serverless: "Applies from X.Y.Z and in serverless."
-- Stack only: "Stack only, from X.Y.Z."
+- Stack only (`serverlessApplies: "no"`): "Stack only, from X.Y.Z (not available in serverless)."
+- Solution-scoped serverless: "Applies from X.Y.Z and in {{observability}} serverless projects."
 - Serverless only: "Serverless only."
 - If the feature is in preview or beta, note that too: "Applies from X.Y.Z (technical preview) and in serverless."
 
@@ -189,6 +205,7 @@ Derive from the `actionType` values in `docsGap`:
 - **Feature status**: look for labels like `Feature:Preview`, `Feature:Beta`, or body mentions. Only set if clearly identifiable — omit if unknown (do NOT set to "TBD")
 - **Feature flags**: look for `featureFlags`, `experimentalFeatures`, `uiSettings`, `config.` references
 - **Product issues**: linked GitHub issues (Closes #X, Fixes #X, or issue URLs)
+- **Serverless applicability**: set `serverlessApplies` per the determination in step 2b (default `"yes"`; `"no"` only with `config/serverless.yml` evidence). This gates the **Serverless** availability cell — `"no"` renders **N/A** instead of a deploy-week estimate
 
 #### 2h. Update queue.json
 
@@ -220,13 +237,14 @@ The merge script accepts **flat** enrichments (recommended) or items nested unde
     "existingDocs": ["https://www.elastic.co/docs/..."],
     "docsGap": [ { "pageUrl": "...", "pageTitle": "...", "section": "...", "currentContent": "...", "gap": "... ends with availability note.", "actionType": "update-existing" } ],
     "effortTag": "update",
+    "serverlessApplies": "no",
     "featureStatus": "preview",
     "featureFlags": ["someFlagName"]
   }
 }
 ```
 
-`featureStatus` and `featureFlags` are optional — omit them entirely when unknown rather than setting them to placeholders. Singular `featureFlag` (string) is also accepted.
+`featureStatus` and `featureFlags` are optional — omit them entirely when unknown rather than setting them to placeholders. Singular `featureFlag` (string) is also accepted. `serverlessApplies` defaults to `"yes"` when omitted; set it explicitly to `"no"` for stack-only features (the only way to get **N/A** in the Serverless cell) or `"unknown"` when genuinely unresolvable.
 
 ##### Sandbox-safe write strategy for parallel agents
 
