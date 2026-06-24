@@ -2,8 +2,9 @@ import { loadEnv } from './env.js';
 loadEnv();
 
 import { runScan } from './scanner.js';
-import { loadQueue, saveQueue } from './config.js';
+import { loadConfig, loadQueue, saveQueue } from './config.js';
 import { renderIssueBody } from './template.js';
+import { preflightProjectScope } from './github.js';
 
 async function main() {
   console.log('PR Docs Triage — Scanner\n');
@@ -35,6 +36,10 @@ async function main() {
   console.log(`  Check: ${check}`);
   console.log(`  No docs needed: ${noDocs}`);
   console.log(`\nRun 'yarn dev' to review in the browser.`);
+
+  // Warn now if the token can't write project fields, so it's caught before
+  // the user starts creating issues in the UI.
+  await preflightProjectScope(Boolean(loadConfig().project));
 }
 
 main().catch((err) => {

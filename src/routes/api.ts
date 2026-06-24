@@ -155,6 +155,7 @@ apiRouter.post('/create-issue', async (req, res) => {
     const issue = await createIssue(owner, repo, title, body, labels);
 
     // Try to set project fields
+    let projectFields: Awaited<ReturnType<typeof setProjectFields>> | null = null;
     if (config.project) {
       const p = config.project;
       const versionMatch = item.version?.match(/v?(\d+\.\d+)/);
@@ -169,7 +170,7 @@ apiRouter.post('/create-issue', async (req, res) => {
         serverlessPubDate = d.toISOString().split('T')[0];
       }
 
-      await setProjectFields(
+      projectFields = await setProjectFields(
         p.org,
         p.number,
         owner,
@@ -229,7 +230,7 @@ apiRouter.post('/create-issue', async (req, res) => {
     queue.items = queue.items.filter((i) => i.id !== queueItemId);
     saveQueue(queue);
 
-    res.json({ ok: true, issue });
+    res.json({ ok: true, issue, projectFields });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

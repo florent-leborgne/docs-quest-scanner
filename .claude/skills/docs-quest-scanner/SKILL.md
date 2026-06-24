@@ -31,7 +31,18 @@ Both `yarn scan` and `yarn dev` need:
    GITHUB_TOKEN=$(gh auth token) yarn dev
    ```
 
-2. **Unsandboxed filesystem access** — the tool reads and writes `__TOOL_DIR__/data/{queue,history,last_run}.json`, which lives **outside** the user's typical Cursor workspace (`docs-content`). When you run these commands inside the agent's default sandbox, writes to those files fail with `EPERM: operation not permitted` (visible in the dev server log when the user clicks Skip / Mark complete / Create issue, surfaced as a 500 in the UI). Always launch both `yarn scan` and `yarn dev` with `required_permissions: ["all"]` so they run outside the sandbox.
+2. **`project` token scope** — creating issues needs the `repo` scope (almost always already present), but adding them to the project board and setting fields (Area / Size / Priority / Feature / Release / Serverless-pub) additionally needs the **`project`** scope. Without it, issues are still created, but project fields are silently skipped — the tool only warns (a startup banner and a per-issue toast in the UI), it does not fail.
+
+   Verify and fix before the first run:
+
+   ```bash
+   gh auth status                  # check the "Token scopes" line includes 'project'
+   gh auth refresh -s project      # add it if missing (interactive — opens a browser/device flow)
+   ```
+
+   This is a one-time setup step per machine, but re-check it after any token reset or reinstall. If `gh auth token` returns a token without `project`, the startup preflight prints a `⚠️ GitHub token is missing the \`project\` scope` banner with the fix command — surface that to the user rather than ignoring it.
+
+3. **Unsandboxed filesystem access** — the tool reads and writes `__TOOL_DIR__/data/{queue,history,last_run}.json`, which lives **outside** the user's typical Cursor workspace (`docs-content`). When you run these commands inside the agent's default sandbox, writes to those files fail with `EPERM: operation not permitted` (visible in the dev server log when the user clicks Skip / Mark complete / Create issue, surfaced as a 500 in the UI). Always launch both `yarn scan` and `yarn dev` with `required_permissions: ["all"]` so they run outside the sandbox.
 
 ## Workflow
 

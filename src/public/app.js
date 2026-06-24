@@ -783,6 +783,12 @@ async function createIssue(itemId) {
       body: { queueItemId: itemId, goodFirstIssue },
     });
     showToast(`Quest accepted! Issue #${result.issue.number} created.`, 'success');
+    if (result.projectFields && result.projectFields.ok === false) {
+      showToast(
+        `Issue created, but project fields were not set. ${result.projectFields.message ?? ''}`.trim(),
+        'error'
+      );
+    }
     await refreshAll();
   } catch (err) {
     showToast(`Failed to create issue: ${err.message}`, 'error');

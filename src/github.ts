@@ -508,9 +508,77 @@ export interface ProjectFieldValues {
   serverlessPubDate?: string;
 }
 
+export interface ProjectFieldResult {
+  ok: boolean;
+  /** Why it failed, when ok is false. */
+  reason?: 'missing-scope' | 'error';
+  /** Human-readable, UI-friendly message. */
+  message?: string;
+  /** Number of fields successfully set, when ok is true. */
+  fieldsSet?: number;
+}
+
+/** OAuth scopes the GitHub Project mutations require (read schema + write fields). */
+const PROJECT_SCOPE = 'project';
+
+/**
+ * Read the classic OAuth scopes carried by the current token, from the
+ * `X-OAuth-Scopes` response header. Returns null when scopes can't be
+ * determined — e.g. a fine-grained PAT, which doesn't report classic scopes
+ * and uses a different permission model.
+ */
+export async function getTokenScopes(): Promise<string[] | null> {
+  try {
+    const ok = getOctokit();
+    const res = await ok.request('GET /');
+    const header = (res.headers as Record<string, string | undefined>)['x-oauth-scopes'];
+    if (header == null) return null;
+    return String(header)
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether the token can read and write GitHub Projects v2.
+ * Returns null when it can't be determined (assume OK in that case).
+ */
+export async function hasProjectScope(): Promise<boolean | null> {
+  const scopes = await getTokenScopes();
+  if (scopes === null) return null;
+  return scopes.includes(PROJECT_SCOPE);
+}
+
+/**
+ * Startup preflight: warn loudly if project board integration is configured
+ * but the token can't write to projects. Turns the otherwise-silent per-issue
+ * failure into an actionable banner. Never throws.
+ */
+export async function preflightProjectScope(projectConfigured: boolean): Promise<void> {
+  if (!projectConfigured) return;
+  const has = await hasProjectScope();
+  if (has !== false) return; // true = OK; null = can't tell, don't cry wolf
+  console.warn(
+    [
+      '',
+      '⚠️  GitHub token is missing the `project` scope.',
+      '   Issues will still be created, but they will NOT be added to the',
+      '   project board or have Area / Size / Priority / Feature / Release set.',
+      '',
+      '   Fix it:   gh auth refresh -s project',
+      '   Restart:  GITHUB_TOKEN=$(gh auth token) yarn dev',
+      '',
+    ].join('\n')
+  );
+}
+
 /**
  * Add an issue to a GitHub Project and set field values.
- * Non-blocking: logs warnings on failure but never throws.
+ * Non-blocking: never throws. Returns a result describing what happened so
+ * callers (and the UI) can surface failures instead of swallowing them.
  */
 export async function setProjectFields(
   org: string,
@@ -519,7 +587,7 @@ export async function setProjectFields(
   issueRepo: string,
   issueNumber: number,
   values: ProjectFieldValues
-): Promise<void> {
+): Promise<ProjectFieldResult> {
   try {
     const ok = getOctokit();
     const schema = await getProjectSchema(org, projectNumber);
@@ -578,7 +646,22 @@ export async function setProjectFields(
     await Promise.all(ops);
     const count = ops.length;
     console.log(`  Set ${count} project field${count !== 1 ? 's' : ''}`);
+    return { ok: true, fieldsSet: count };
   } catch (err) {
+    const msg = String(err);
+    const isScopeError =
+      msg.includes('read:project') || (msg.includes('scope') && msg.includes('project'));
+    if (isScopeError) {
+      console.warn(
+        'Project fields skipped: token missing `project` scope. Fix: gh auth refresh -s project'
+      );
+      return {
+        ok: false,
+        reason: 'missing-scope',
+        message: 'Token missing `project` scope — run: gh auth refresh -s project',
+      };
+    }
     console.warn('Failed to set project fields (non-blocking):', err);
+    return { ok: false, reason: 'error', message: msg };
   }
 }
