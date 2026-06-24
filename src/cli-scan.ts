@@ -2,7 +2,7 @@ import { loadEnv } from './env.js';
 loadEnv();
 
 import { runScan } from './scanner.js';
-import { loadConfig, loadQueue, saveQueue } from './config.js';
+import { loadNormalizedConfig, loadQueue, saveQueue } from './config.js';
 import { renderIssueBody } from './template.js';
 import { preflightProjectScope } from './github.js';
 
@@ -39,7 +39,7 @@ async function main() {
 
   // Warn now if the token can't write project fields, so it's caught before
   // the user starts creating issues in the UI.
-  await preflightProjectScope(Boolean(loadConfig().project));
+  await preflightProjectScope(loadNormalizedConfig().repos.some((r) => !!r.project));
 }
 
 main().catch((err) => {

@@ -1,5 +1,5 @@
 import { Octokit } from '@octokit/rest';
-import type { Config, PullRequest, TrackedIssue } from './types.js';
+import type { PullRequest, RepoRef, TrackedIssue } from './types.js';
 
 let octokit: Octokit | null = null;
 
@@ -24,12 +24,13 @@ export function getOctokit(): Octokit {
  *      changed since the last scan even if they merged before it
  */
 export async function searchMergedPRs(
-  config: Config,
+  source: RepoRef,
   teamLabels: string[],
-  sinceDate: string
+  sinceDate: string,
+  maxMergeAgeMonths = 6
 ): Promise<PullRequest[]> {
   const ok = getOctokit();
-  const { owner, repo } = config.sourceRepo;
+  const { owner, repo } = source;
 
   const teamQ = teamLabels.map((l) => `label:"${l}"`).join(' ');
 
@@ -54,7 +55,7 @@ export async function searchMergedPRs(
   // Compute the merge-age cutoff: late-label entries merged before this date
   // are filtered out. They're typically PRs whose only recent activity is an
   // unrelated label edit (e.g., a version label removed years after merge).
-  const maxAgeMonths = config.maxMergeAgeMonths ?? 6;
+  const maxAgeMonths = maxMergeAgeMonths;
   const cutoff = new Date(sinceDate);
   cutoff.setMonth(cutoff.getMonth() - maxAgeMonths);
   const cutoffMs = cutoff.getTime();

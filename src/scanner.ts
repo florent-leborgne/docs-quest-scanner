@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { loadConfig, loadHistory, loadLastRun, loadQueue, saveQueue } from './config.js';
+import { loadConfig, normalizeConfig, loadHistory, loadLastRun, loadQueue, saveQueue } from './config.js';
 import { searchMergedPRs, getPRFiles, findCrossReferencedIssues } from './github.js';
-import type { Config, PullRequest, QueueItem, Queue, Assessment } from './types.js';
+import type { Config, PullRequest, QueueItem, Queue, Assessment, RepoGroup, TrackedIssue } from './types.js';
 
 /** Default lookback if no last run exists: 14 days */
 const DEFAULT_LOOKBACK_DAYS = 14;
@@ -11,138 +11,123 @@ const DEFAULT_LOOKBACK_DAYS = 14;
  * Returns the updated queue.
  */
 export async function runScan(configOverride?: Config): Promise<Queue> {
-  const config = configOverride ?? loadConfig();
+  const raw = configOverride ?? loadConfig();
+  const config = normalizeConfig(raw);
   const history = loadHistory();
   const lastRun = loadLastRun();
   const existingQueue = loadQueue();
 
-  // Determine the start date for this scan
-  const sinceDate = lastRun
-    ? lastRun.lastRunDate
-    : daysAgo(DEFAULT_LOOKBACK_DAYS);
+  // Legacy queue/history entries that predate multi-repo carry no repoId; attribute
+  // them to the first (default) group so existing suppression/restore still works.
+  const defaultRepoId = config.repos[0]?.id;
 
-  console.log(`Scanning PRs merged since ${sinceDate}`);
-  console.log(`  Version pattern: ${config.versionLabelPattern}`);
-  console.log(`  Release note filter: ${config.releaseNoteLabels.join(', ')}`);
+  // Known PRs from history, keyed by `${repoId}#${number}` to avoid collisions
+  // when two source repos share a PR number.
+  const knownPRs = new Set<string>();
+  for (const e of history.entries) {
+    const rid = e.repoId ?? defaultRepoId;
+    for (const n of e.prNumbers) knownPRs.add(`${rid}#${n}`);
+  }
 
-  // Collect all known PR numbers from history (created or dismissed)
-  const knownPRs = new Set(history.entries.flatMap((e) => e.prNumbers));
-
-  // Preserve user edits and enrichment data from existing queue items.
-  // The assessment (docsGap, summaries, etc.) is expensive to re-generate —
-  // restoring it lets the SKILL.md enrichment guard skip already-enriched items.
+  // Preserve user edits and enrichment data from existing queue items, keyed by
+  // `${repoId}#${sortedNumbers}`. The assessment (docsGap, etc.) is expensive to
+  // re-generate — restoring it lets the SKILL.md enrichment guard skip done items.
   const existingEdits = new Map<string, QueueItem['userEdits']>();
   const existingAssessments = new Map<string, QueueItem['assessment']>();
   const existingTitles = new Map<string, string>();
   for (const item of existingQueue.items) {
-    const key = item.prs.map((p) => p.number).sort().join(',');
+    const key = itemKey(item.repoId ?? defaultRepoId, item.prs);
     if (item.userEdits) existingEdits.set(key, item.userEdits);
     if (item.assessment?.docsGap?.length) existingAssessments.set(key, item.assessment);
-    // Preserve the AI-generated title — the scanner seeds suggestedTitle from the
-    // PR title on every buildQueueItem() call, which would overwrite a better title
-    // written by the enrichment agent on a prior run.
     if (item.suggestedTitle) existingTitles.set(key, item.suggestedTitle);
   }
 
-  // Fetch PRs per category
   const allItems: QueueItem[] = [];
 
-  for (const category of config.categories) {
-    console.log(`  Scanning ${category.name} (${category.labels.join(', ')})...`);
+  // Scan each repo group × its categories.
+  for (const group of config.repos) {
+    const sinceDate =
+      lastRun?.byRepo?.[group.id] ?? lastRun?.lastRunDate ?? daysAgo(DEFAULT_LOOKBACK_DAYS);
+    console.log(`\nRepo ${group.id} — scanning PRs merged since ${sinceDate}`);
+    console.log(`  Version pattern: ${group.versionLabelPattern}`);
+    console.log(`  Release note filter: ${(group.releaseNoteLabels ?? []).join(', ')}`);
 
-    let prs: PullRequest[] = [];
-    for (const label of category.labels) {
-      const found = await searchMergedPRs(config, [label], sinceDate);
-      prs.push(...found);
-    }
+    const releaseNoteLabels = new Set((group.releaseNoteLabels ?? []).map((l) => l.toLowerCase()));
 
-    // Deduplicate PRs (a PR might match multiple labels in the same category)
-    prs = deduplicatePRs(prs);
+    for (const category of group.categories) {
+      console.log(`  Scanning ${category.name} (${category.labels.join(', ')})...`);
 
-    // Filter: PR must have at least one release note label to be triaged.
-    // GitHub search doesn't support OR across labels, so we filter locally.
-    const releaseNoteLabels = new Set(config.releaseNoteLabels.map((l) => l.toLowerCase()));
-    const beforeFilter = prs.length;
-    prs = prs.filter((pr) =>
-      pr.labels.some((l) => releaseNoteLabels.has(l.toLowerCase()))
-    );
-    if (beforeFilter > prs.length) {
-      console.log(`    Filtered ${beforeFilter - prs.length} PRs without release note labels.`);
-    }
-
-    // Filter out PRs already in history
-    prs = prs.filter((pr) => !knownPRs.has(pr.number));
-
-    if (prs.length === 0) {
-      console.log(`    No new PRs found.`);
-      continue;
-    }
-
-    console.log(`    Found ${prs.length} new PRs.`);
-
-    // Fetch changed files for each PR (useful for assessment)
-    for (const pr of prs) {
-      try {
-        pr.changedFiles = await getPRFiles(
-          config.sourceRepo.owner,
-          config.sourceRepo.repo,
-          pr.number
-        );
-      } catch {
-        // Non-critical, continue without files
-      }
-    }
-
-    // Group related PRs
-    const groups = groupRelatedPRs(prs);
-
-    for (const group of groups) {
-      const item = buildQueueItem(group, category.name, config);
-
-      // Restore user edits and prior enrichment if this group was seen before
-      const key = group.map((p) => p.number).sort().join(',');
-      if (existingEdits.has(key)) item.userEdits = existingEdits.get(key);
-      if (existingAssessments.has(key)) {
-        // Restore the full enriched assessment — this prevents Claude from re-enriching
-        // items that were already analyzed in a prior run (the SKILL.md guard checks
-        // for a populated docsGap to decide whether enrichment is needed).
-        item.assessment = existingAssessments.get(key)!;
-      }
-      if (existingTitles.has(key)) {
-        // Restore the AI-generated title so the scanner's PR-title fallback doesn't
-        // overwrite a user-perspective title written by the enrichment agent.
-        item.suggestedTitle = existingTitles.get(key)!;
+      let prs: PullRequest[] = [];
+      for (const label of category.labels) {
+        const found = await searchMergedPRs(group.source, [label], sinceDate, group.maxMergeAgeMonths);
+        prs.push(...found);
       }
 
-      allItems.push(item);
+      // Deduplicate PRs (a PR might match multiple labels in the same category)
+      prs = deduplicatePRs(prs);
+
+      // Filter: PR must have at least one release note label to be triaged.
+      const beforeFilter = prs.length;
+      prs = prs.filter((pr) => pr.labels.some((l) => releaseNoteLabels.has(l.toLowerCase())));
+      if (beforeFilter > prs.length) {
+        console.log(`    Filtered ${beforeFilter - prs.length} PRs without release note labels.`);
+      }
+
+      // Filter out PRs already handled in this repo group (repo-scoped).
+      prs = prs.filter((pr) => !knownPRs.has(`${group.id}#${pr.number}`));
+
+      if (prs.length === 0) {
+        console.log(`    No new PRs found.`);
+        continue;
+      }
+      console.log(`    Found ${prs.length} new PRs.`);
+
+      // Fetch changed files for each PR (useful for assessment)
+      for (const pr of prs) {
+        try {
+          pr.changedFiles = await getPRFiles(group.source.owner, group.source.repo, pr.number);
+        } catch {
+          // Non-critical, continue without files
+        }
+      }
+
+      const groups = groupRelatedPRs(prs);
+      for (const grp of groups) {
+        const item = buildQueueItem(grp, category.name, group);
+
+        // Restore user edits and prior enrichment if this group was seen before
+        const key = itemKey(group.id, grp);
+        if (existingEdits.has(key)) item.userEdits = existingEdits.get(key);
+        if (existingAssessments.has(key)) item.assessment = existingAssessments.get(key)!;
+        if (existingTitles.has(key)) item.suggestedTitle = existingTitles.get(key)!;
+
+        allItems.push(item);
+      }
     }
   }
 
-  // Deduplicate items across categories: if the same PR(s) appear in multiple
-  // categories, keep only the first occurrence and note the others in alsoAppliesTo
+  // Deduplicate items across categories within the same repo group: if the same
+  // PR(s) appear in multiple categories, keep the first and note others in alsoAppliesTo.
   const deduped = deduplicateAcrossCategories(allItems);
 
-  // Check whether each new item is already tracked by an existing docs issue.
-  // Reads cross-reference events from each PR's own timeline — GitHub records these
-  // automatically when a docs-content issue mentions the PR. One REST call per PR,
-  // no search API rate limit consumed.
+  // Check whether each new item is already tracked by an existing docs issue,
+  // using its group's source repo and cross-ref repo list.
   if (deduped.length > 0) {
-    console.log(`  Checking for existing docs issues via cross-references...`);
-    const targetRepos = [
-      `${config.targetRepo.owner}/${config.targetRepo.repo}`,
-      `${config.targetRepo.owner}/docs-content-internal`,
-    ];
+    console.log(`\n  Checking for existing docs issues via cross-references...`);
+    const groupById = new Map(config.repos.map((g) => [g.id, g]));
     await Promise.all(
       deduped.map(async (item) => {
+        const group = groupById.get(item.repoId);
+        if (!group) return;
         try {
-          const allTracked = new Map<number, import('./types.js').TrackedIssue>();
+          const allTracked = new Map<number, TrackedIssue>();
           await Promise.all(
             item.prs.map(async (pr) => {
               const refs = await findCrossReferencedIssues(
-                config.sourceRepo.owner,
-                config.sourceRepo.repo,
+                group.source.owner,
+                group.source.repo,
                 pr.number,
-                targetRepos
+                group.crossRefRepos ?? []
               );
               for (const ref of refs) {
                 if (!allTracked.has(ref.number)) allTracked.set(ref.number, ref);
@@ -295,14 +280,19 @@ function detectVersion(prs: PullRequest[], pattern: string): string {
  * Build a queue item from a group of PRs.
  * Produces a basic assessment (no AI). The skill layer adds richer assessments.
  */
+/** Stable key for matching a PR group across runs, scoped to its repo. */
+function itemKey(repoId: string, prs: PullRequest[]): string {
+  return `${repoId}#${prs.map((p) => p.number).sort((a, b) => a - b).join(',')}`;
+}
+
 function buildQueueItem(
   prs: PullRequest[],
   category: string,
-  config: Config
+  group: RepoGroup
 ): QueueItem {
   const primary = prs[0];
-  const assessment = basicAssessment(prs);
-  const version = detectVersion(prs, config.versionLabelPattern);
+  const assessment = basicAssessment(prs, group.productIssuePattern);
+  const version = detectVersion(prs, group.versionLabelPattern ?? '^v\\d+\\.\\d+\\.\\d+$');
 
   // Build a suggested title
   const suggestedTitle = prs.length === 1
@@ -320,6 +310,7 @@ function buildQueueItem(
 
   return {
     id: randomUUID(),
+    repoId: group.id,
     category,
     version,
     prs,
@@ -356,7 +347,7 @@ function cleanPRTitle(title: string): string {
  * - fix → "check" by default. Fixes rarely need docs unless the fix changes
  *   documented behavior or the PR was mistagged. Flag for manual review.
  */
-function basicAssessment(prs: PullRequest[]): Assessment {
+function basicAssessment(prs: PullRequest[], productIssuePattern?: string): Assessment {
   const allLabels = prs.flatMap((p) => p.labels);
   const allLabelLower = allLabels.map((l) => l.toLowerCase());
   const allFiles = prs.flatMap((p) => p.changedFiles ?? []);
@@ -404,12 +395,13 @@ function basicAssessment(prs: PullRequest[]): Assessment {
   else if (allLabels.some((l) => /beta/i.test(l))) featureStatus = 'beta';
   else if (allLabels.some((l) => /\bga\b/i.test(l))) featureStatus = 'ga';
 
-  // Product issue from body
+  // Product issue from body — pattern defaults to the group's source repo.
   let productIssue: string | undefined;
+  const productIssueRe = new RegExp(
+    productIssuePattern ?? 'https://github\\.com/elastic/kibana/issues/\\d+'
+  );
   for (const pr of prs) {
-    const issueMatch = pr.body.match(
-      /https:\/\/github\.com\/elastic\/kibana\/issues\/\d+/
-    );
+    const issueMatch = pr.body.match(productIssueRe);
     if (issueMatch) {
       productIssue = issueMatch[0];
       break;
@@ -503,7 +495,7 @@ function deduplicateAcrossCategories(items: QueueItem[]): QueueItem[] {
   const seen = new Map<string, QueueItem>();
 
   for (const item of items) {
-    const key = item.prs.map((p) => p.number).sort().join(',');
+    const key = itemKey(item.repoId, item.prs);
     const existing = seen.get(key);
     if (existing) {
       if (!existing.alsoAppliesTo) existing.alsoAppliesTo = [];

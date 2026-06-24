@@ -121,6 +121,7 @@
             <label class="form-group-header" for="cfg-title">Title</label>
             <input class="form-control input-sm width-full" id="cfg-title" placeholder="PR Docs Triage" />
           </div>
+          <div id="cfg-legacy">
           <div class="form-group mb-3">
             <label class="form-group-header" for="cfg-source-repo">Source repo</label>
             <input class="form-control input-sm width-full" id="cfg-source-repo" placeholder="elastic/kibana" />
@@ -159,6 +160,12 @@
             <label class="form-group-header">Categories</label>
             <div id="cfg-categories"></div>
             <button type="button" class="btn btn-sm mt-2" id="btn-add-category">+ Add category</button>
+          </div>
+          </div><!-- /cfg-legacy -->
+          <div id="cfg-multirepo" class="form-group mb-3" style="display:none">
+            <label class="form-group-header" for="cfg-raw-json">Multi-repo configuration (JSON)</label>
+            <p class="note mt-1 mb-2">This config uses <code>repos[]</code>. Edit the full configuration as JSON below. Routing (target repo, project, meta issue) is resolved per repo group at scan and issue-creation time.</p>
+            <textarea class="form-control input-sm width-full" id="cfg-raw-json" rows="18" spellcheck="false" style="font-family:monospace; white-space:pre;"></textarea>
           </div>
           <div class="d-flex flex-justify-end">
             <button type="button" class="btn mr-2" id="btn-cancel-settings">Cancel</button>

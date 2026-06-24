@@ -3,7 +3,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { apiRouter } from './routes/api.js';
 import { loadEnv } from './env.js';
-import { loadConfig } from './config.js';
+import { loadNormalizedConfig } from './config.js';
 import { preflightProjectScope } from './github.js';
 
 loadEnv();
@@ -27,5 +27,5 @@ app.get('/{*path}', (_req, res) => {
 app.listen(PORT, () => {
   console.log(`PR Docs Triage running at http://localhost:${PORT}`);
   // Warn loudly if board integration is configured but the token can't write to it.
-  void preflightProjectScope(Boolean(loadConfig().project));
+  void preflightProjectScope(loadNormalizedConfig().repos.some((r) => !!r.project));
 });

@@ -399,11 +399,27 @@ function renderCard(item) {
   `;
 }
 
+/** Build <option>s for the target-repo dropdown from the configured targets. */
+function targetRepoOptions(selected) {
+  const configured = state.queue?.targetOptions?.length
+    ? state.queue.targetOptions
+    : ['elastic/docs-content', 'elastic/docs-content-internal'];
+  // Ensure the current value is always present and selected, even if not configured.
+  const options = [...new Set([selected, ...configured])].filter(Boolean);
+  return options
+    .map((t) => `<option value="${esc(t)}" ${sel(selected, t)}>${esc(t.split('/')[1] || t)}</option>`)
+    .join('');
+}
+
 function renderCardBody(item) {
   const pencil = `<svg class="octicon" viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064Zm1.238-3.763a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354Z"/></svg>`;
   const edits = item.userEdits ?? {};
   const title = edits.title ?? item.suggestedTitle;
-  const targetRepo = edits.targetRepo ?? (state.config ? `${state.config.targetRepo.owner}/${state.config.targetRepo.repo}` : 'elastic/docs-content');
+  // Default target comes from the item's resolved repo group (server-provided),
+  // falling back to the legacy single targetRepo if present.
+  const targetRepo = edits.targetRepo
+    ?? item.resolvedTarget
+    ?? (state.config?.targetRepo ? `${state.config.targetRepo.owner}/${state.config.targetRepo.repo}` : 'elastic/docs-content');
 
   const versions = allVersions(item);
   const slWeek = effectiveServerless(item);
@@ -501,8 +517,7 @@ function renderCardBody(item) {
       <div class="target-repo-select">
         <label>Target:</label>
         <select data-field="targetRepo" data-item="${item.id}">
-          <option value="elastic/docs-content" ${sel(targetRepo, 'elastic/docs-content')}>docs-content</option>
-          <option value="elastic/docs-content-internal" ${sel(targetRepo, 'elastic/docs-content-internal')}>docs-content-internal</option>
+          ${targetRepoOptions(targetRepo)}
         </select>
       </div>
     </div>
@@ -830,11 +845,24 @@ function openSettings() {
   if (!config) return;
 
   document.getElementById('cfg-title').value = config.title ?? '';
+
+  // Multi-repo configs (`repos[]`) are surfaced as editable JSON; the legacy
+  // single-repo form can't represent multiple groups. Legacy configs keep the form.
+  const isMultiRepo = Array.isArray(config.repos) && config.repos.length > 0;
+  document.getElementById('cfg-legacy').style.display = isMultiRepo ? 'none' : '';
+  document.getElementById('cfg-multirepo').style.display = isMultiRepo ? '' : 'none';
+
+  if (isMultiRepo) {
+    document.getElementById('cfg-raw-json').value = JSON.stringify(config, null, 2);
+    document.getElementById('settings-dialog').showModal();
+    return;
+  }
+
   document.getElementById('cfg-source-repo').value = `${config.sourceRepo.owner}/${config.sourceRepo.repo}`;
   document.getElementById('cfg-target-repo').value = `${config.targetRepo.owner}/${config.targetRepo.repo}`;
   document.getElementById('cfg-version-pattern').value = config.versionLabelPattern ?? '^v\\d+\\.\\d+\\.\\d+$';
   document.getElementById('cfg-release-note-labels').value = (config.releaseNoteLabels ?? []).join(', ');
-  document.getElementById('cfg-issue-labels').value = config.issueLabels.join(', ');
+  document.getElementById('cfg-issue-labels').value = (config.issueLabels ?? []).join(', ');
 
   const metaEnabled = config.metaIssue?.enabled !== false;
   document.getElementById('cfg-meta-issue-enabled').checked = metaEnabled;
@@ -843,7 +871,7 @@ function openSettings() {
 
   const catContainer = document.getElementById('cfg-categories');
   catContainer.innerHTML = '';
-  for (const cat of config.categories) {
+  for (const cat of config.categories ?? []) {
     catContainer.appendChild(createCategoryRow(cat));
   }
 
@@ -885,6 +913,26 @@ function addCategoryRow() {
 
 async function saveSettings(e) {
   e.preventDefault();
+
+  // Multi-repo configs are edited as raw JSON.
+  if (Array.isArray(state.config?.repos) && state.config.repos.length > 0) {
+    let parsed;
+    try {
+      parsed = JSON.parse(document.getElementById('cfg-raw-json').value);
+    } catch (err) {
+      showToast(`Invalid JSON: ${err.message}`, 'error');
+      return;
+    }
+    try {
+      await api('/config', { method: 'PUT', body: parsed });
+      document.getElementById('settings-dialog').close();
+      showToast('Settings saved.', 'success');
+      await refreshAll();
+    } catch (err) {
+      showToast(`Save failed: ${err.message}`, 'error');
+    }
+    return;
+  }
 
   const parseRepo = (val) => {
     const [owner, repo] = val.split('/');

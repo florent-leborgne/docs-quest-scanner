@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import {
   loadConfig,
+  loadNormalizedConfig,
+  normalizeConfig,
   saveConfig,
   loadQueue,
   saveQueue,
@@ -49,18 +51,37 @@ apiRouter.put('/config', (req, res) => {
 
 apiRouter.get('/queue', (_req, res) => {
   const queue = loadQueue();
+  const config = loadNormalizedConfig();
+  const groupById = new Map(config.repos.map((g) => [g.id, g]));
 
-  // Always re-render issue bodies from the template so they reflect
-  // the latest assessment data (e.g., after AI enrichment)
-  for (const item of queue.items) {
+  // Union of every selectable target repo across groups (target + cross-ref repos),
+  // for the per-issue target dropdown.
+  const targetOptions = [
+    ...new Set(
+      config.repos.flatMap((g) => [`${g.target.owner}/${g.target.repo}`, ...(g.crossRefRepos ?? [])])
+    ),
+  ];
+
+  // Re-render bodies and attach each item's resolved routing (transient — not persisted)
+  // so the UI can show source/target/project without reading the legacy config shape.
+  const items = queue.items.map((item) => {
+    let suggestedBody: string;
     try {
-      item.suggestedBody = renderIssueBody(item);
+      suggestedBody = renderIssueBody(item);
     } catch {
-      item.suggestedBody = '(template rendering failed)';
+      suggestedBody = '(template rendering failed)';
     }
-  }
+    const group = groupById.get(item.repoId);
+    return {
+      ...item,
+      suggestedBody,
+      resolvedTarget: group ? `${group.target.owner}/${group.target.repo}` : undefined,
+      repoLabel: group?.label ?? group?.id,
+      projectNumber: group?.project?.number,
+    };
+  });
 
-  res.json(queue);
+  res.json({ ...queue, items, targetOptions });
 });
 
 /** Update user edits for a queue item */
@@ -108,11 +129,17 @@ apiRouter.post('/scan/complete', (_req, res) => {
     return;
   }
 
-  saveLastRun({
-    lastRunDate: queue.scannedAt.split('T')[0],
-  });
+  const date = queue.scannedAt.split('T')[0];
+  // The scan covered every configured group, so advance each group's date.
+  // Keep the legacy global lastRunDate as a fallback for any newly added group.
+  const prev = loadLastRun() ?? {};
+  const byRepo = { ...(prev.byRepo ?? {}) };
+  for (const group of loadNormalizedConfig().repos) {
+    byRepo[group.id] = date;
+  }
+  saveLastRun({ lastRunDate: date, byRepo });
 
-  res.json({ ok: true, lastRunDate: queue.scannedAt.split('T')[0] });
+  res.json({ ok: true, lastRunDate: date });
 });
 
 apiRouter.get('/last-run', (_req, res) => {
@@ -130,7 +157,7 @@ apiRouter.get('/history', (_req, res) => {
 apiRouter.post('/create-issue', async (req, res) => {
   try {
     const { queueItemId, goodFirstIssue } = req.body;
-    const config = loadConfig();
+    const config = loadNormalizedConfig();
     const queue = loadQueue();
     const history = loadHistory();
 
@@ -140,15 +167,27 @@ apiRouter.post('/create-issue', async (req, res) => {
       return;
     }
 
+    // Resolve the repo group this item belongs to. Fail loudly rather than
+    // mis-route if the config changed since the scan.
+    const group = config.repos.find((r) => r.id === item.repoId);
+    if (!group) {
+      res.status(409).json({
+        error: `No repo group "${item.repoId}" in current config — re-run the scan after changing repos.`,
+      });
+      return;
+    }
+
     const title = item.userEdits?.title ?? item.suggestedTitle;
     const ok = getOctokit();
     const { data: authUser } = await ok.users.getAuthenticated().catch(() => ({ data: null }));
     const body = renderIssueBody(item, authUser?.login);
-    const targetRepo = item.userEdits?.targetRepo ?? `${config.targetRepo.owner}/${config.targetRepo.repo}`;
+    // Target repo stays a UI choice: the dropdown wins, defaulting to the group's
+    // target. It only changes where the issue is filed — project/meta follow the group.
+    const targetRepo = item.userEdits?.targetRepo ?? `${group.target.owner}/${group.target.repo}`;
     const [owner, repo] = targetRepo.split('/');
 
     // Create the issue
-    const labels = [...config.issueLabels];
+    const labels = [...(group.issueLabels ?? [])];
     if (goodFirstIssue) {
       labels.push('good first issue');
     }
@@ -156,8 +195,8 @@ apiRouter.post('/create-issue', async (req, res) => {
 
     // Try to set project fields
     let projectFields: Awaited<ReturnType<typeof setProjectFields>> | null = null;
-    if (config.project) {
-      const p = config.project;
+    if (group.project) {
+      const p = group.project;
       const versionMatch = item.version?.match(/v?(\d+\.\d+)/);
       const latestMerge = item.prs.map((pr) => pr.mergedAt).filter(Boolean).sort().pop();
       let serverlessPubDate: string | undefined;
@@ -205,8 +244,8 @@ apiRouter.post('/create-issue', async (req, res) => {
       // checklist don't trigger duplicate searches. Value `null` = not found.
       const metaCache = new Map<string, Awaited<ReturnType<typeof findMetaIssue>>>();
       for (const catName of categoriesToLink) {
-        const cat = config.categories.find((c) => c.name === catName);
-        const metaConfig = cat?.metaIssue ?? config.metaIssue;
+        const cat = group.categories.find((c) => c.name === catName);
+        const metaConfig = cat?.metaIssue ?? group.metaIssue;
         if (metaConfig?.enabled === false) continue;
         const titlePattern = metaConfig?.titlePattern;
         try {
@@ -232,6 +271,7 @@ apiRouter.post('/create-issue', async (req, res) => {
     const entry: HistoryEntry = {
       prNumbers: item.prs.map((p) => p.number),
       decision: 'created',
+      repoId: item.repoId,
       issueUrl: issue.url,
       issueNumber: issue.number,
       timestamp: new Date().toISOString(),
@@ -269,6 +309,7 @@ apiRouter.post('/dismiss', (req, res) => {
   const entry: HistoryEntry = {
     prNumbers: item.prs.map((p) => p.number),
     decision: 'dismissed',
+    repoId: item.repoId,
     reason: reason ?? 'no docs needed',
     timestamp: new Date().toISOString(),
     version: item.version,
@@ -318,8 +359,10 @@ apiRouter.get('/meta-issue', async (req, res) => {
       res.status(400).json({ error: 'version query param required (e.g., ?version=v9.4.0)' });
       return;
     }
-    const config = loadConfig();
-    const { owner, repo } = config.targetRepo;
+    const config = loadNormalizedConfig();
+    const repoId = req.query.repoId as string | undefined;
+    const group = (repoId && config.repos.find((r) => r.id === repoId)) || config.repos[0];
+    const { owner, repo } = group.target;
     const meta = await findMetaIssue(owner, repo, version);
     res.json(meta ?? { number: null });
   } catch (err) {

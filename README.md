@@ -139,6 +139,54 @@ Omit `metaIssue` entirely to use the defaults. Set `enabled: false` to disable t
 
 Per-category overrides are currently edited in `config.json` (the Settings dialog surfaces them read-only beneath each category row).
 
+### Multiple source repositories
+
+A single scan can span several source repos, each with its own labels, target repo, project, and meta issue. Use the `repos[]` array instead of the top-level `sourceRepo`/`targetRepo`/`categories` fields:
+
+```json
+{
+  "title": "Docs triage",
+  "repos": [
+    {
+      "id": "elastic/kibana",
+      "source": { "owner": "elastic", "repo": "kibana" },
+      "target": { "owner": "elastic", "repo": "docs-content" },
+      "categories": [
+        { "name": "Dashboards", "labels": ["Team:Presentation", "Team:Visualizations"] }
+      ],
+      "project": { "org": "elastic", "number": 1034, "defaultArea": "Kibana core" },
+      "metaIssue": { "titlePattern": "Kibana {version}" }
+    },
+    {
+      "id": "elastic/elasticsearch",
+      "source": { "owner": "elastic", "repo": "elasticsearch" },
+      "target": { "owner": "elastic", "repo": "docs-content" },
+      "categories": [
+        { "name": "Search", "labels": [":Search/Search"] }
+      ],
+      "project": { "org": "elastic", "number": 1034 }
+    }
+  ]
+}
+```
+
+Each repo group owns its routing. A scan iterates every group × its categories; created issues are added to that group's project and meta issue, and the **Feature / project / meta-issue mapping is resolved automatically** from the PR's source repo and labels — the writer doesn't pick it. The **target repo** remains a per-issue dropdown choice (defaulting to the group's `target`).
+
+Per-group fields:
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `id` | Stable identifier (used internally to route issues) | `"<source.owner>/<source.repo>"` |
+| `label` | Optional display name | `id` |
+| `source` / `target` | Source repo scanned / target repo for issues | required |
+| `categories` | Team labels for this repo (supports per-category `metaIssue`) | required |
+| `project`, `metaIssue`, `issueLabels` | Same shape as the global fields, scoped to this group | — |
+| `versionLabelPattern`, `releaseNoteLabels`, `maxMergeAgeMonths` | Per-group overrides | global defaults |
+| `crossRefRepos` | Repos checked for existing docs issues | `[target, "<target>-internal"]` |
+| `productIssuePattern` | Regex to extract the product issue URL from PR bodies | source repo's issues URL |
+
+The legacy flat config (top-level `sourceRepo`/`targetRepo`/`categories`) still works unchanged — it's treated as a single repo group internally. Multi-repo configs are edited as JSON in the Settings dialog.
+
 ### GitHub Project integration
 
 Auto-fill project board fields when creating issues:

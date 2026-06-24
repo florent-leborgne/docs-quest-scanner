@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Config, History, LastRun, Queue } from './types.js';
+import type { Config, History, LastRun, Queue, NormalizedConfig, RepoGroup } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -42,6 +42,72 @@ export function loadConfig(): Config {
   const defaults = readJson<Config>(paths.configDefaults);
   if (!defaults) throw new Error('Missing config.defaults.json');
   return defaults;
+}
+
+const DEFAULT_VERSION_PATTERN = '^v\\d+\\.\\d+\\.\\d+$';
+const DEFAULT_RELEASE_NOTE_LABELS = [
+  'release_note:breaking',
+  'release_note:deprecation',
+  'release_note:feature',
+  'release_note:enhancement',
+];
+
+/** Fill per-group defaults derived from the group's source/target. */
+function fillRepoDefaults(g: RepoGroup): RepoGroup {
+  const target = `${g.target.owner}/${g.target.repo}`;
+  return {
+    ...g,
+    id: g.id || `${g.source.owner}/${g.source.repo}`,
+    versionLabelPattern: g.versionLabelPattern ?? DEFAULT_VERSION_PATTERN,
+    releaseNoteLabels: g.releaseNoteLabels ?? DEFAULT_RELEASE_NOTE_LABELS,
+    issueLabels: g.issueLabels ?? [],
+    maxMergeAgeMonths: g.maxMergeAgeMonths ?? 6,
+    crossRefRepos:
+      g.crossRefRepos ??
+      (g.target.repo.endsWith('-internal')
+        ? [target]
+        : [target, `${g.target.owner}/${g.target.repo}-internal`]),
+    productIssuePattern:
+      g.productIssuePattern ?? `https://github\\.com/${g.source.owner}/${g.source.repo}/issues/\\d+`,
+  };
+}
+
+/**
+ * Normalize either config shape into repo groups. A `repos[]` config is used
+ * directly; a legacy flat config is wrapped into a single synthetic group so
+ * the rest of the app only ever deals with `RepoGroup`s.
+ */
+export function normalizeConfig(raw: Config): NormalizedConfig {
+  let groups: RepoGroup[];
+  if (raw.repos?.length) {
+    groups = raw.repos.map(fillRepoDefaults);
+  } else {
+    if (!raw.sourceRepo || !raw.targetRepo || !raw.categories) {
+      throw new Error(
+        'Config must define either `repos` or the legacy `sourceRepo`/`targetRepo`/`categories` fields.'
+      );
+    }
+    groups = [
+      fillRepoDefaults({
+        id: `${raw.sourceRepo.owner}/${raw.sourceRepo.repo}`,
+        source: raw.sourceRepo,
+        target: raw.targetRepo,
+        categories: raw.categories,
+        project: raw.project,
+        metaIssue: raw.metaIssue,
+        issueLabels: raw.issueLabels,
+        versionLabelPattern: raw.versionLabelPattern,
+        releaseNoteLabels: raw.releaseNoteLabels,
+        maxMergeAgeMonths: raw.maxMergeAgeMonths,
+      }),
+    ];
+  }
+  return { title: raw.title, repos: groups };
+}
+
+/** Load and normalize the config into repo groups (what scan/create code consumes). */
+export function loadNormalizedConfig(): NormalizedConfig {
+  return normalizeConfig(loadConfig());
 }
 
 export function saveConfig(config: Config): void {
