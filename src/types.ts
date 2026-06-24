@@ -219,6 +219,8 @@ export interface Config {
     defaultPriority?: string;
     /** Effort tag → Size mapping */
     sizeMap?: Record<string, string>;
+    /** Effort tag → Content Type field value mapping */
+    contentTypeMap?: Record<string, string>;
     /** Category name → Feature field value mapping */
     featureMap?: Record<string, string>;
     /**

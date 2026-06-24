@@ -189,6 +189,7 @@ apiRouter.post('/create-issue', async (req, res) => {
           priority: p.defaultPriority ?? undefined,
           area: p.defaultArea ?? undefined,
           feature: labelFeature ?? p.featureMap?.[item.category] ?? undefined,
+          contentType: p.contentTypeMap?.[item.assessment.effortTag ?? ''] ?? undefined,
           serverlessPubDate,
         }
       );

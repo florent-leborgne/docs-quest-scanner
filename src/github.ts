@@ -504,6 +504,8 @@ export interface ProjectFieldValues {
   area?: string;
   /** e.g., "Kib: ES|QL" for Feature */
   feature?: string;
+  /** e.g., "Net-new", "Improvement" for Content Type */
+  contentType?: string;
   /** YYYY-MM-DD for Serverless-pub */
   serverlessPubDate?: string;
 }
@@ -635,6 +637,12 @@ export async function setProjectFields(
       const match = findOption(schema, 'Feature', values.feature);
       if (match) ops.push(setSelectField(schema.projectId, itemId, match.fieldId, match.optionId));
       else console.warn(`  Feature option "${values.feature}" not found in project`);
+    }
+
+    if (values.contentType) {
+      const match = findOption(schema, 'Content Type', values.contentType);
+      if (match) ops.push(setSelectField(schema.projectId, itemId, match.fieldId, match.optionId));
+      else console.warn(`  Content Type option "${values.contentType}" not found in project`);
     }
 
     if (values.serverlessPubDate) {

@@ -50,6 +50,11 @@
       "update": "S",
       "new-content": "M"
     },
+    "contentTypeMap": {
+      "quick-fix": "Improvement",
+      "update": "Improvement",
+      "new-content": "Net-new"
+    },
     "featureMap": {
       "Dashboards and Visualizations": "Kib: Dashboards",
       "Discover": "Kib: Discover",
