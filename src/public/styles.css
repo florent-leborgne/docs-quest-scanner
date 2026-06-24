@@ -1099,6 +1099,7 @@ dialog::backdrop {
 .category-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 8px;
 }
@@ -1109,6 +1110,13 @@ dialog::backdrop {
 
 .category-row .btn-octicon {
   flex-shrink: 0;
+}
+
+.category-override-hint {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: var(--color-fg-muted, #656d76);
+  padding-left: 2px;
 }
 
 /* ── Toast ────────────────────────────────────────────── */

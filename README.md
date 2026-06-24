@@ -107,6 +107,38 @@ When you accept a quest, the tool can automatically add a link to the created is
 
 Omit `metaIssue` entirely to use the defaults. Set `enabled: false` to disable the feature completely. You can also configure this in the Settings dialog of the review UI without editing JSON.
 
+#### Per-category meta issue override
+
+`metaIssue` can be set **globally** (applies to all categories) or **per category** (overrides the global setting for that category only). A category-level override is the right approach when a single scan covers features across multiple solutions, each with its own release checklist — issues land in the correct checklist automatically, without manual moves.
+
+```json
+{
+  "categories": [
+    {
+      "name": "Kibana platform",
+      "labels": ["Team:sharedUX", "Team:Kibana Management"],
+      "metaIssue": { "titlePattern": "Kibana {version} docs checklist" }
+    },
+    {
+      "name": "Observability",
+      "labels": ["Team:obs-ux-management"],
+      "metaIssue": { "titlePattern": "Observability {version} docs checklist" }
+    },
+    {
+      "name": "Security",
+      "labels": ["Team:Security"],
+      "metaIssue": { "titlePattern": "Security {version} docs checklist" }
+    }
+  ]
+}
+```
+
+- A category with `metaIssue` uses it exclusively; categories without one fall back to the global `metaIssue`.
+- A category can opt out entirely with `"metaIssue": { "enabled": false }`, without affecting other categories.
+- `{version}` resolution is unchanged at both levels.
+
+Per-category overrides are currently edited in `config.json` (the Settings dialog surfaces them read-only beneath each category row).
+
 ### GitHub Project integration
 
 Auto-fill project board fields when creating issues:

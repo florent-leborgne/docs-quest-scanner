@@ -844,13 +844,25 @@ function openSettings() {
   const catContainer = document.getElementById('cfg-categories');
   catContainer.innerHTML = '';
   for (const cat of config.categories) {
-    catContainer.appendChild(createCategoryRow(cat.name, cat.labels.join(', ')));
+    catContainer.appendChild(createCategoryRow(cat));
   }
 
   document.getElementById('settings-dialog').showModal();
 }
 
-function createCategoryRow(name = '', labels = '') {
+function createCategoryRow(cat = {}) {
+  const name = cat.name ?? '';
+  const labels = (cat.labels ?? []).join(', ');
+  // Surface overrides that this form doesn't edit yet, so they're visible
+  // (and the save path preserves them). Edit these via config JSON for now.
+  const overrides = [];
+  if (cat.metaIssueHeading) overrides.push(`heading: ${cat.metaIssueHeading}`);
+  if (cat.metaIssue?.titlePattern) overrides.push(`meta: ${cat.metaIssue.titlePattern}`);
+  if (cat.metaIssue?.enabled === false) overrides.push('meta: disabled');
+  const overrideHint = overrides.length
+    ? `<div class="category-override-hint">${esc(overrides.join('  ·  '))}</div>`
+    : '';
+
   const row = document.createElement('div');
   row.className = 'category-row';
   row.innerHTML = `
@@ -861,6 +873,7 @@ function createCategoryRow(name = '', labels = '') {
         <path fill="currentColor" d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/>
       </svg>
     </button>
+    ${overrideHint}
   `;
   row.querySelector('[data-action="remove-category"]').addEventListener('click', () => row.remove());
   return row;
@@ -878,15 +891,24 @@ async function saveSettings(e) {
     return { owner: owner?.trim(), repo: repo?.trim() };
   };
 
+  // Merge edited rows back onto the existing categories so fields this form
+  // doesn't expose (metaIssueHeading, metaIssue, …) survive the save.
+  const existingCats = state.config?.categories ?? [];
   const categories = [];
   for (const row of document.querySelectorAll('.category-row')) {
     const name = row.querySelector('[data-cat="name"]').value.trim();
     const labels = row.querySelector('[data-cat="labels"]').value
       .split(',').map((l) => l.trim()).filter(Boolean);
-    if (name && labels.length) categories.push({ name, labels });
+    if (name && labels.length) {
+      const existing = existingCats.find((c) => c.name === name);
+      categories.push({ ...existing, name, labels });
+    }
   }
 
+  // Spread the existing config first so fields not in this form (project,
+  // maxMergeAgeMonths, repos, …) are preserved rather than dropped on save.
   const config = {
+    ...state.config,
     title: document.getElementById('cfg-title').value.trim() || 'PR Docs Triage',
     sourceRepo: parseRepo(document.getElementById('cfg-source-repo').value),
     targetRepo: parseRepo(document.getElementById('cfg-target-repo').value),

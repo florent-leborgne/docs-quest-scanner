@@ -350,14 +350,18 @@ interface ProjectSchema {
   fields: ProjectField[];
 }
 
-let cachedSchema: ProjectSchema | null = null;
+const schemaCache = new Map<string, ProjectSchema>();
 
 /**
  * Fetch the project schema (field IDs + option IDs) via GraphQL.
- * Cached for the lifetime of the process.
+ * Cached per (org, projectNumber) for the lifetime of the process — keying
+ * by project is required when a single run touches more than one project,
+ * otherwise the first project's field/option IDs leak into the others.
  */
 async function getProjectSchema(org: string, projectNumber: number): Promise<ProjectSchema> {
-  if (cachedSchema) return cachedSchema;
+  const cacheKey = `${org}:${projectNumber}`;
+  const cached = schemaCache.get(cacheKey);
+  if (cached) return cached;
   const ok = getOctokit();
 
   const query = `query($org: String!, $number: Int!) {
@@ -391,7 +395,7 @@ async function getProjectSchema(org: string, projectNumber: number): Promise<Pro
   const result: any = await ok.graphql(query, { org, number: projectNumber });
   const project = result.organization.projectV2;
 
-  cachedSchema = {
+  const schema: ProjectSchema = {
     projectId: project.id,
     fields: project.fields.nodes.map((f: any) => ({
       id: f.id,
@@ -401,7 +405,8 @@ async function getProjectSchema(org: string, projectNumber: number): Promise<Pro
     })),
   };
 
-  return cachedSchema;
+  schemaCache.set(cacheKey, schema);
+  return schema;
 }
 
 /**

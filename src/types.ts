@@ -141,12 +141,41 @@ export interface LastRun {
   lastRunDate: string;
 }
 
+/**
+ * Meta issue configuration. A meta issue is a checklist issue in the target
+ * repo that tracks all docs issues for a given release. When enabled, newly
+ * created issues are automatically linked into the matching section.
+ *
+ * Can be set globally (`Config.metaIssue`) or per category (`Category.metaIssue`),
+ * where the category value overrides the global one for that category only.
+ */
+export interface MetaIssueConfig {
+  /** Whether to link created issues to a meta issue. Defaults to true. */
+  enabled?: boolean;
+  /**
+   * Title search pattern used to find the meta issue in the target repo.
+   * Use `{version}` as a placeholder for the major.minor version (e.g., "9.5").
+   * Default: "Kibana {version}"
+   *
+   * Examples:
+   *   "My Project {version} release checklist"
+   *   "Docs tracker — {version}"
+   */
+  titlePattern?: string;
+}
+
 /** A team category with its GitHub labels */
 export interface Category {
   name: string;
   labels: string[];
   /** Heading to match in the meta issue body (defaults to name if not set) */
   metaIssueHeading?: string;
+  /**
+   * Route this category's issues to a different meta issue than the global
+   * (or repo-group) default. Overrides `Config.metaIssue` for this category only.
+   * Set `{ enabled: false }` to opt this category out of meta-issue linking.
+   */
+  metaIssue?: MetaIssueConfig;
 }
 
 /** App configuration */
@@ -183,27 +212,13 @@ export interface Config {
   maxMergeAgeMonths?: number;
   issueLabels: string[];
   /**
-   * Meta issue configuration. A meta issue is a checklist issue in the target
-   * repo that tracks all docs issues for a given release. When enabled, newly
-   * created issues are automatically linked into the matching section.
+   * Global meta issue configuration. Applies to all categories unless a
+   * category defines its own `metaIssue` override.
    *
    * Omit this field entirely to use the defaults (enabled, "Kibana {version}").
    * Set `enabled: false` to disable meta issue linking entirely.
    */
-  metaIssue?: {
-    /** Whether to link created issues to a meta issue. Defaults to true. */
-    enabled?: boolean;
-    /**
-     * Title search pattern used to find the meta issue in the target repo.
-     * Use `{version}` as a placeholder for the major.minor version (e.g., "9.5").
-     * Default: "Kibana {version}"
-     *
-     * Examples:
-     *   "My Project {version} release checklist"
-     *   "Docs tracker — {version}"
-     */
-    titlePattern?: string;
-  };
+  metaIssue?: MetaIssueConfig;
   /**
    * GitHub Projects v2 integration. When set, newly created issues
    * are added to the project and fields are auto-filled.

@@ -195,28 +195,36 @@ apiRouter.post('/create-issue', async (req, res) => {
       );
     }
 
-    // Try to add to the meta issue for this item's version.
-    // Skipped entirely if metaIssue.enabled is explicitly false.
-    const metaConfig = config.metaIssue;
-    if (metaConfig?.enabled !== false && item.version && item.version !== 'unknown') {
-      try {
-        const meta = await findMetaIssue(owner, repo, item.version, metaConfig?.titlePattern);
-        if (meta) {
-          const cat = config.categories.find((c) => c.name === item.category);
-          const heading = cat?.metaIssueHeading ?? item.category;
-          await addToMetaIssue(owner, repo, meta.number, heading, issue.url);
-
-          // Also update sections for cross-category matches (sequential to avoid stale reads)
-          for (const alsoCat of item.alsoAppliesTo ?? []) {
-            const alsoConfig = config.categories.find((c) => c.name === alsoCat);
-            const alsoHeading = alsoConfig?.metaIssueHeading ?? alsoCat;
-            await addToMetaIssue(owner, repo, meta.number, alsoHeading, issue.url);
+    // Link the created issue into the meta-issue checklist(s) for its version.
+    // Each category can override the global meta-issue config (issue #2), so the
+    // primary category and any also-applies categories may resolve to different
+    // checklists. Categories without an override share the global config.
+    if (item.version && item.version !== 'unknown') {
+      const categoriesToLink = [item.category, ...(item.alsoAppliesTo ?? [])];
+      // Cache meta-issue lookups by title pattern so categories sharing a
+      // checklist don't trigger duplicate searches. Value `null` = not found.
+      const metaCache = new Map<string, Awaited<ReturnType<typeof findMetaIssue>>>();
+      for (const catName of categoriesToLink) {
+        const cat = config.categories.find((c) => c.name === catName);
+        const metaConfig = cat?.metaIssue ?? config.metaIssue;
+        if (metaConfig?.enabled === false) continue;
+        const titlePattern = metaConfig?.titlePattern;
+        try {
+          const cacheKey = titlePattern ?? '<default>';
+          let meta = metaCache.get(cacheKey);
+          if (meta === undefined) {
+            meta = await findMetaIssue(owner, repo, item.version, titlePattern);
+            metaCache.set(cacheKey, meta);
           }
-        } else {
-          console.warn(`No meta issue found for version ${item.version} (pattern: "${metaConfig?.titlePattern ?? 'Kibana {version}'}")`);
+          if (meta) {
+            const heading = cat?.metaIssueHeading ?? catName;
+            await addToMetaIssue(owner, repo, meta.number, heading, issue.url);
+          } else {
+            console.warn(`No meta issue found for version ${item.version} (pattern: "${titlePattern ?? 'Kibana {version}'}")`);
+          }
+        } catch (err) {
+          console.warn(`Failed to update meta issue for ${catName} ${item.version}:`, err);
         }
-      } catch (err) {
-        console.warn(`Failed to update meta issue for ${item.version}:`, err);
       }
     }
 
