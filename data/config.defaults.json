@@ -10,7 +10,7 @@
     "release_note:enhancement"
   ],
   "versionLabelPattern": "^v\\d+\\.\\d+\\.\\d+$",
-  "issueLabels": ["Team:Experience"],
+  "issueLabels": ["Team:SKI"],
   "maxMergeAgeMonths": 6,
   "repos": [
     {
@@ -18,16 +18,16 @@
       "source": { "owner": "elastic", "repo": "kibana" },
       "target": { "owner": "elastic", "repo": "docs-content" },
       "metaIssue": "kibana",
-      "issueLabels": ["Team:Experience"],
+      "issueLabels": ["Team:SKI"],
       "project": {
         "org": "elastic",
         "number": 1034,
         "defaultArea": "Kibana core",
         "defaultPriority": "P2 (Important)",
         "sizeMap": {
-          "quick-fix": "XS",
-          "update": "S",
-          "new-content": "M"
+          "quick-fix": "XS (<1D)",
+          "update": "S (2-3D)",
+          "new-content": "M (1W)"
         },
         "contentTypeMap": {
           "quick-fix": "Improvement",
@@ -44,18 +44,18 @@
         },
         {
           "name": "Discover",
-          "labels": ["Team:dataDiscovery"],
+          "labels": ["Team:DataDiscovery"],
           "feature": "Kib: Discover"
         },
         {
           "name": "ES|QL in Kibana",
-          "labels": ["Team:esql"],
+          "labels": ["Team:ESQL"],
           "feature": "Kib: ES|QL",
           "metaIssueHeading": "ES|QL editor in Kibana"
         },
         {
           "name": "Kibana navigation and UI",
-          "labels": ["Team:sharedUX"],
+          "labels": ["Team:SharedUX"],
           "feature": "Kib: Navigation"
         },
         {
@@ -69,6 +69,17 @@
           "labels": ["Team:Kibana Management"],
           "feature": "Kib: Other",
           "metaIssueHeading": "Kibana platform"
+        },
+        {
+          "name": "Machine Learning",
+          "labels": ["Team:ML"],
+          "feature": "Kib: Machine Learning UI",
+          "metaIssueHeading": "Machine learning"
+        },
+        {
+          "name": "AI infrastructure",
+          "labels": ["Team:AI Infra"],
+          "feature": "Kib: AI infra"
         }
       ]
     }

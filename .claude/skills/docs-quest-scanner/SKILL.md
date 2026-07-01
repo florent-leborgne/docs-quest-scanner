@@ -313,7 +313,7 @@ Key settings:
 - `categories`: team labels grouped by doc area. Each category has an optional `metaIssueHeading` field — when set, this heading is used to match the section in the meta issue instead of the category `name`. This avoids creating duplicate sections when the meta issue uses different headings than the scan categories.
 - `versionLabelPattern`: regex to detect version labels on PRs (default: `^v\d+\.\d+\.\d+$`)
 - `releaseNoteLabels`: labels that qualify a PR for triage (breaking, deprecation, feature, enhancement)
-- `issueLabels`: labels for created issues (e.g., `Team:Experience`)
+- `issueLabels`: labels for created issues (e.g., `Team:SKI`)
 
 ## Issue template
 
